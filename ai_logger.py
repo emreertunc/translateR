@@ -2,6 +2,7 @@
 AI Logger System
 
 Logs all AI provider requests and responses in human-readable format.
+Author: Emre Ertunç
 """
 
 import os

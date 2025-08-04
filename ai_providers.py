@@ -2,6 +2,7 @@
 AI Provider System
 
 Handles integration with multiple AI providers for translation services.
+Author: Emre Ertunç
 """
 
 from abc import ABC, abstractmethod
