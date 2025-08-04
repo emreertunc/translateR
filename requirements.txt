@@ -1,0 +1,12 @@
+# TranslateR Dependencies
+# Minimal set of required packages for App Store Connect localization automation
+
+# App Store Connect API authentication
+PyJWT>=2.10.0
+cryptography>=44.0.0
+
+# HTTP requests for API communication
+requests>=2.32.0
+
+# Optional: For future enhanced CLI experience
+# colorama>=0.4.6  # Cross-platform colored terminal output
