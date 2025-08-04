@@ -5,6 +5,7 @@ config/api_keys.json
 # AI development files (keep local only)
 CLAUDE.md
 .claude/
+logs/
 
 # Generated config files
 config/providers.json

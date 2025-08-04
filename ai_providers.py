@@ -8,6 +8,7 @@ from abc import ABC, abstractmethod
 from typing import Optional, Dict, Any, List
 import requests
 import os
+from ai_logger import log_ai_request, log_ai_response, log_character_limit_retry
 
 
 class AIProvider(ABC):
@@ -48,6 +49,9 @@ class AnthropicProvider(AIProvider):
                   max_length: Optional[int] = None, 
                   is_keywords: bool = False) -> str:
         """Translate using Anthropic Claude."""
+        # Log the request
+        log_ai_request("Anthropic Claude", self.model, text, target_language, max_length, is_keywords)
+        
         try:
             url = "https://api.anthropic.com/v1/messages"
             headers = {
@@ -95,6 +99,8 @@ class AnthropicProvider(AIProvider):
             
             # Check character limit and retry if needed
             if max_length and len(translated_text) > max_length:
+                log_character_limit_retry("Anthropic Claude", len(translated_text), max_length)
+                
                 # Try again with even stricter instructions
                 system_message += f" The text MUST be under {max_length} characters. Prioritize brevity."
                 data["system"] = system_message
@@ -104,9 +110,13 @@ class AnthropicProvider(AIProvider):
                 response_data = response.json()
                 translated_text = response_data["content"][0]["text"]
             
+            # Log successful response
+            log_ai_response("Anthropic Claude", translated_text, success=True)
             return translated_text
             
         except Exception as e:
+            # Log error response
+            log_ai_response("Anthropic Claude", "", success=False, error=str(e))
             raise Exception(f"Anthropic translation failed: {str(e)}")
     
     def get_name(self) -> str:
@@ -124,6 +134,9 @@ class OpenAIProvider(AIProvider):
                   max_length: Optional[int] = None, 
                   is_keywords: bool = False) -> str:
         """Translate using OpenAI GPT."""
+        # Log the request
+        log_ai_request("OpenAI GPT", self.model, text, target_language, max_length, is_keywords)
+        
         try:
             url = "https://api.openai.com/v1/chat/completions"
             headers = {
@@ -171,6 +184,8 @@ class OpenAIProvider(AIProvider):
             
             # Check character limit and retry if needed
             if max_length and len(translated_text) > max_length:
+                log_character_limit_retry("OpenAI GPT", len(translated_text), max_length)
+                
                 # Try again with even stricter instructions
                 system_message += f" The text MUST be under {max_length} characters. Prioritize brevity."
                 data["messages"][0]["content"] = system_message
@@ -180,9 +195,13 @@ class OpenAIProvider(AIProvider):
                 response_data = response.json()
                 translated_text = response_data["choices"][0]["message"]["content"]
             
+            # Log successful response
+            log_ai_response("OpenAI GPT", translated_text, success=True)
             return translated_text
             
         except Exception as e:
+            # Log error response
+            log_ai_response("OpenAI GPT", "", success=False, error=str(e))
             raise Exception(f"OpenAI translation failed: {str(e)}")
     
     def get_name(self) -> str:
@@ -200,6 +219,9 @@ class GoogleGeminiProvider(AIProvider):
                   max_length: Optional[int] = None, 
                   is_keywords: bool = False) -> str:
         """Translate using Google Gemini."""
+        # Log the request
+        log_ai_request("Google Gemini", self.model, text, target_language, max_length, is_keywords)
+        
         try:
             url = f"https://generativelanguage.googleapis.com/v1/models/{self.model}:generateContent?key={self.api_key}"
             headers = {
@@ -258,6 +280,8 @@ class GoogleGeminiProvider(AIProvider):
             
             # Check character limit and retry if needed
             if max_length and len(translated_text) > max_length:
+                log_character_limit_retry("Google Gemini", len(translated_text), max_length)
+                
                 # Try again with even stricter instructions
                 prompt += f" The text MUST be under {max_length} characters. Prioritize brevity."
                 data["contents"][0]["parts"][0]["text"] = prompt
@@ -267,9 +291,13 @@ class GoogleGeminiProvider(AIProvider):
                 response_data = response.json()
                 translated_text = response_data["candidates"][0]["content"]["parts"][0]["text"]
             
+            # Log successful response
+            log_ai_response("Google Gemini", translated_text, success=True)
             return translated_text
             
         except Exception as e:
+            # Log error response
+            log_ai_response("Google Gemini", "", success=False, error=str(e))
             raise Exception(f"Google Gemini translation failed: {str(e)}")
     
     def get_name(self) -> str:
