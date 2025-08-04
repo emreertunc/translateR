@@ -130,6 +130,47 @@ After first run, config files are created in `config/`:
 **`providers.json`** - AI provider settings  
 **`instructions.txt`** - Translation guidelines for AI
 
+## Logging & Debugging
+
+All AI requests and responses are automatically logged for debugging and quality control:
+
+**Location**: `logs/ai_requests_YYYYMMDD_HHMMSS.log`
+
+**What's logged**:
+- All translation requests with original text and parameters
+- AI responses with translated text and character counts
+- Error details when translations fail
+- Character limit retry attempts
+- Timestamps for performance analysis
+
+**Log format example**:
+```
+[2025-08-05 10:30:15] REQUEST
+Provider: Anthropic Claude
+Model: claude-sonnet-4-20250514
+Target Language: German
+Max Length: 100
+Original Text (45 chars):
+--------------------------------------------------
+Transform your ideas into beautiful apps
+--------------------------------------------------
+
+[2025-08-05 10:30:18] RESPONSE - SUCCESS
+Provider: Anthropic Claude
+Translated Text (42 chars):
+--------------------------------------------------
+Verwandeln Sie Ihre Ideen in schöne Apps
+--------------------------------------------------
+```
+
+**Benefits**:
+- **Debug translation issues** - See exactly what was sent and received
+- **Compare AI providers** - Track which providers work best for your content
+- **Quality control** - Review translations before publishing
+- **Performance monitoring** - Identify slow or failing requests
+
+**Privacy**: API keys are never logged. Log files stay on your machine (not in git).
+
 ## Troubleshooting
 
 **Error: "App Store Connect configuration not found"**  
