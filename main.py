@@ -38,19 +38,22 @@ class TranslateRCLI:
             # Setup Anthropic
             anthropic_key = self.config.get_ai_provider_key("anthropic")
             if anthropic_key:
-                anthropic = AnthropicProvider(anthropic_key)
+                default_model = providers_config.get("anthropic", {}).get("default_model", "claude-sonnet-4-20250514")
+                anthropic = AnthropicProvider(anthropic_key, default_model)
                 self.ai_manager.add_provider("anthropic", anthropic)
             
             # Setup OpenAI
             openai_key = self.config.get_ai_provider_key("openai")
             if openai_key:
-                openai = OpenAIProvider(openai_key)
+                default_model = providers_config.get("openai", {}).get("default_model", "gpt-4.1")
+                openai = OpenAIProvider(openai_key, default_model)
                 self.ai_manager.add_provider("openai", openai)
             
             # Setup Google Gemini
             google_key = self.config.get_ai_provider_key("google")
             if google_key:
-                google = GoogleGeminiProvider(google_key)
+                default_model = providers_config.get("google", {}).get("default_model", "gemini-2.5-flash")
+                google = GoogleGeminiProvider(google_key, default_model)
                 self.ai_manager.add_provider("google", google)
                 
         except Exception as e:
@@ -92,14 +95,14 @@ class TranslateRCLI:
         # App Store Connect setup
         print("📱 App Store Connect Configuration")
         print("You need your API credentials from App Store Connect:")
-        print("1. Go to App Store Connect > Users and Access > Keys")
+        print("1. Go to App Store Connect > Users and Access > Integrations")
         print("2. Create a new API key with App Manager role")
         print("3. Download the .p8 private key file")
         print()
         
         key_id = input("Enter your API Key ID: ").strip()
         issuer_id = input("Enter your Issuer ID: ").strip()
-        private_key_path = input("Enter path to your .p8 private key file: ").strip()
+        private_key_path = input("Enter path to your .p8 private key file (e.g., AuthKey_ABC123.p8 if in project directory): ").strip()
         
         # Validate private key file
         if not os.path.exists(private_key_path):

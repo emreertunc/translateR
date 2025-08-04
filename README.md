@@ -34,9 +34,9 @@ TranslateR connects to your App Store Connect account and automatically translat
 ## What You Need
 
 ### App Store Connect API Key
-1. Go to App Store Connect > Users and Access > Keys
+1. Go to App Store Connect > Users and Access > Integrations
 2. Create API key with **App Manager** role
-3. Download the `.p8` file
+3. Download the `.p8` file and place it in your project directory
 4. Note your Key ID and Issuer ID
 
 ### AI Provider (pick one or more)

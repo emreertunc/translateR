@@ -40,7 +40,7 @@ class AIProvider(ABC):
 class AnthropicProvider(AIProvider):
     """Anthropic Claude AI provider."""
     
-    def __init__(self, api_key: str, model: str = "claude-3-7-sonnet-20250219"):
+    def __init__(self, api_key: str, model: str = None):
         self.api_key = api_key
         self.model = model
     
@@ -116,7 +116,7 @@ class AnthropicProvider(AIProvider):
 class OpenAIProvider(AIProvider):
     """OpenAI GPT provider."""
     
-    def __init__(self, api_key: str, model: str = "gpt-4"):
+    def __init__(self, api_key: str, model: str = None):
         self.api_key = api_key
         self.model = model
     
@@ -192,7 +192,7 @@ class OpenAIProvider(AIProvider):
 class GoogleGeminiProvider(AIProvider):
     """Google Gemini provider."""
     
-    def __init__(self, api_key: str, model: str = "gemini-pro"):
+    def __init__(self, api_key: str, model: str = None):
         self.api_key = api_key
         self.model = model
     
@@ -201,7 +201,7 @@ class GoogleGeminiProvider(AIProvider):
                   is_keywords: bool = False) -> str:
         """Translate using Google Gemini."""
         try:
-            url = f"https://generativelanguage.googleapis.com/v1beta/models/{self.model}:generateContent?key={self.api_key}"
+            url = f"https://generativelanguage.googleapis.com/v1/models/{self.model}:generateContent?key={self.api_key}"
             headers = {
                 "Content-Type": "application/json"
             }
@@ -234,7 +234,7 @@ class GoogleGeminiProvider(AIProvider):
                 }],
                 "generationConfig": {
                     "temperature": 0.7,
-                    "maxOutputTokens": 1000
+                    "maxOutputTokens": 8000
                 }
             }
             
@@ -246,8 +246,13 @@ class GoogleGeminiProvider(AIProvider):
             if ("candidates" in response_data and 
                 len(response_data["candidates"]) > 0 and
                 "content" in response_data["candidates"][0] and
-                "parts" in response_data["candidates"][0]["content"]):
+                "parts" in response_data["candidates"][0]["content"] and
+                len(response_data["candidates"][0]["content"]["parts"]) > 0):
                 translated_text = response_data["candidates"][0]["content"]["parts"][0]["text"]
+            elif ("candidates" in response_data and 
+                  len(response_data["candidates"]) > 0 and
+                  response_data["candidates"][0].get("finishReason") == "MAX_TOKENS"):
+                raise ValueError("Translation too long - exceeded token limit. Try shorter text.")
             else:
                 raise ValueError("Unexpected API response format")
             

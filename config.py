@@ -59,14 +59,25 @@ class ConfigManager:
             "openai": {
                 "name": "OpenAI GPT",
                 "class": "OpenAIProvider", 
-                "models": ["gpt-4", "gpt-3.5-turbo"],
-                "default_model": "gpt-4"
+                "models": [
+                    "gpt-4.1",
+                    "gpt-4o",
+                    "gpt-4o-mini", 
+                    "gpt-4-turbo",
+                    "gpt-4",
+                    "gpt-3.5-turbo"
+                ],
+                "default_model": "gpt-4.1"
             },
             "google": {
                 "name": "Google Gemini",
                 "class": "GoogleGeminiProvider",
-                "models": ["gemini-pro", "gemini-pro-vision"],
-                "default_model": "gemini-pro"
+                "models": [
+                    "gemini-2.5-pro",
+                    "gemini-2.5-flash",
+                    "gemini-2.5-flash-lite"
+                ],
+                "default_model": "gemini-2.5-flash"
             }
         }
         
