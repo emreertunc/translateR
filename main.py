@@ -921,6 +921,7 @@ class TranslateRCLI:
             print_info(f"Starting full setup for {len(target_locales)} languages...")
             
             success_count = 0
+            successful_locales = []
             for i, target_locale in enumerate(target_locales, 1):
                 language_name = APP_STORE_LOCALES[target_locale]
                 print()
@@ -980,6 +981,7 @@ class TranslateRCLI:
                     
                     print_success(f"  ✅ {language_name} setup completed")
                     success_count += 1
+                    successful_locales.append(target_locale)
                     time.sleep(2)  # Rate limiting
                     
                 except Exception as e:
@@ -999,7 +1001,96 @@ class TranslateRCLI:
                     continue
             
             print()
-            print_success(f"Full setup completed! {success_count}/{len(target_locales)} languages set up successfully")
+            print_success(f"Version localization completed! {success_count}/{len(target_locales)} languages set up successfully")
+            
+            # Now handle app name and subtitle translation for successfully created languages
+            if success_count > 0:
+                print()
+                print_info("Setting up app name and subtitle translations...")
+                
+                # Get app info ID
+                app_info_id = self.asc_client.find_primary_app_info_id(app_id)
+                if app_info_id:
+                    try:
+                        # Get base app info localization
+                        existing_app_info = self.asc_client.get_app_info_localizations(app_info_id)
+                        base_app_info = None
+                        app_info_localization_map = {}
+                        
+                        # Build map of existing app info localizations
+                        for loc in existing_app_info.get("data", []):
+                            locale = loc["attributes"]["locale"]
+                            app_info_localization_map[locale] = loc["id"]
+                            if locale == base_locale:
+                                base_app_info = loc
+                        
+                        if base_app_info:
+                            base_app_attrs = base_app_info["attributes"]
+                            base_name = base_app_attrs.get("name", "")
+                            base_subtitle = base_app_attrs.get("subtitle", "")
+                            
+                            if base_name or base_subtitle:
+                                # Get updated app info localizations (App Store Connect creates them automatically)
+                                time.sleep(1)  # Give App Store Connect time to create app info localizations
+                                updated_app_info = self.asc_client.get_app_info_localizations(app_info_id)
+                                
+                                # Update the map with any new localizations
+                                for loc in updated_app_info.get("data", []):
+                                    locale = loc["attributes"]["locale"]
+                                    app_info_localization_map[locale] = loc["id"]
+                                
+                                app_name_success_count = 0
+                                for locale in successful_locales:
+                                    language_name = APP_STORE_LOCALES[locale]
+                                    
+                                    if locale in app_info_localization_map:
+                                        try:
+                                            print(f"  • Setting up app name/subtitle for {language_name}...")
+                                            
+                                            # Prepare translation data
+                                            translated_name = None
+                                            translated_subtitle = None
+                                            
+                                            if base_name:
+                                                translated_name = provider.translate(
+                                                    base_name, 
+                                                    language_name,
+                                                    max_length=get_field_limit("name")
+                                                )
+                                            
+                                            if base_subtitle:
+                                                translated_subtitle = provider.translate(
+                                                    base_subtitle, 
+                                                    language_name,
+                                                    max_length=get_field_limit("subtitle")
+                                                )
+                                            
+                                            # Update existing app info localization
+                                            self.asc_client.update_app_info_localization(
+                                                localization_id=app_info_localization_map[locale],
+                                                name=translated_name,
+                                                subtitle=translated_subtitle
+                                            )
+                                            
+                                            app_name_success_count += 1
+                                            time.sleep(1)  # Rate limiting
+                                            
+                                        except Exception as e:
+                                            print_error(f"    Failed to update app name/subtitle for {language_name}: {str(e)}")
+                                            continue
+                                    else:
+                                        print_warning(f"    App info localization not found for {language_name}")
+                                
+                                print_success(f"App name/subtitle setup completed! {app_name_success_count}/{len(successful_locales)} languages configured")
+                            else:
+                                print_info("No app name or subtitle found in base language - skipping app name/subtitle translation")
+                        else:
+                            print_warning("Could not find base app info localization - skipping app name/subtitle translation")
+                    
+                    except Exception as e:
+                        print_warning(f"App name/subtitle translation failed: {str(e)}")
+                else:
+                    print_warning("Could not find app info ID - skipping app name/subtitle translation")
             
             # Show final status
             final_localizations = self.asc_client.get_app_store_version_localizations(version_id)
@@ -1007,6 +1098,7 @@ class TranslateRCLI:
             total_supported = len(APP_STORE_LOCALES)
             
             print()
+            print_success(f"✅ Full setup completed! Translation and app name/subtitle setup finished")
             print_info(f"Your app now supports {final_count}/{total_supported} available App Store languages")
             coverage = (final_count / total_supported) * 100
             print_info(f"Localization coverage: {coverage:.1f}%")
