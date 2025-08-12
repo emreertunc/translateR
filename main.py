@@ -1314,6 +1314,18 @@ class TranslateRCLI:
                 print_error("App ID is required")
                 return True
             
+            # Validate app ID exists by trying to get its versions
+            try:
+                version_test = self.asc_client.get_latest_app_store_version(app_id)
+                if not version_test:
+                    print_error("No App Store version found for this app. Please check your App ID.")
+                    return True
+            except Exception as e:
+                print_error(f"Failed to find app with ID '{app_id}'. Please check your App ID.")
+                if "404" in str(e):
+                    print_error("App not found. Make sure you're using the correct App ID.")
+                return True
+            
             # Get app name for export file
             apps_response = self.asc_client.get_apps()
             app_name = "Unknown App"
@@ -1336,20 +1348,28 @@ class TranslateRCLI:
             
             if version_choice == "1":
                 # Get latest version with version string info
-                versions_response = self.asc_client._request("GET", f"apps/{app_id}/appStoreVersions")
-                versions = versions_response.get("data", [])
-                
-                if not versions:
-                    print_error("No App Store version found for this app")
+                try:
+                    versions_response = self.asc_client._request("GET", f"apps/{app_id}/appStoreVersions")
+                    versions = versions_response.get("data", [])
+                    
+                    if not versions:
+                        print_error("No App Store version found for this app")
+                        return True
+                    
+                    version_id = versions[0]["id"]
+                    version_string = versions[0]["attributes"].get("versionString", "unknown")
+                    print_success(f"Using latest version: {version_string} ({version_id})")
+                except Exception as e:
+                    print_error(f"Failed to get app versions: {str(e)}")
                     return True
-                
-                version_id = versions[0]["id"]
-                version_string = versions[0]["attributes"].get("versionString", "unknown")
-                print_success(f"Using latest version: {version_string} ({version_id})")
             
             elif version_choice == "2":
-                versions_response = self.asc_client._request("GET", f"apps/{app_id}/appStoreVersions")
-                versions = versions_response.get("data", [])
+                try:
+                    versions_response = self.asc_client._request("GET", f"apps/{app_id}/appStoreVersions")
+                    versions = versions_response.get("data", [])
+                except Exception as e:
+                    print_error(f"Failed to get app versions: {str(e)}")
+                    return True
                 
                 if not versions:
                     print_error("No versions found for this app")
