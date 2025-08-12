@@ -158,7 +158,7 @@ class TranslateRCLI:
         """Display main menu and handle user choice."""
         print()
         print("🌍 TranslateR - Choose your workflow:")
-        print("1. 🔄 Translation Mode - Translate to new languages")
+        print("1. 🌐 Translation Mode - Translate to new languages")
         print("2. 🔄 Update Mode - Update existing localizations")
         print("3. 📋 Copy Mode - Copy from previous version") 
         print("4. 🚀 Full Setup Mode - Complete localization setup")
