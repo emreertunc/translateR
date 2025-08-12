@@ -60,9 +60,16 @@ class ConfigManager:
                 "name": "OpenAI GPT",
                 "class": "OpenAIProvider", 
                 "models": [
+                    "gpt-5",
+                    "gpt-5-mini", 
+                    "gpt-5-nano",
+                    "gpt-5-chat-latest",
+                    "gpt-5-2025-08-07",
+                    "gpt-5-mini-2025-08-07",
+                    "gpt-5-nano-2025-08-07",
                     "gpt-4.1",
                     "gpt-4o",
-                    "gpt-4o-mini", 
+                    "gpt-4o-mini",
                     "gpt-4-turbo",
                     "gpt-4",
                     "gpt-3.5-turbo"
