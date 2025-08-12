@@ -328,7 +328,10 @@ class TranslateRCLI:
                             max_length=get_field_limit("keywords"),
                             is_keywords=True
                         )
-                        translated_data["keywords"] = truncate_keywords(translated_keywords)
+                        # Clean and format keywords properly
+                        translated_keywords = translated_keywords.strip().rstrip('.')
+                        translated_keywords = truncate_keywords(translated_keywords, 100)
+                        translated_data["keywords"] = translated_keywords
                     
                     # Promotional text
                     if base_data.get("promotionalText"):
@@ -605,7 +608,19 @@ class TranslateRCLI:
                             )
                             
                             if is_keywords:
+                                # Clean and format keywords properly
+                                translated_content = translated_content.strip().rstrip('.')
                                 translated_content = truncate_keywords(translated_content)
+                            
+                            # Final safeguard: enforce character limits
+                            if field == "keywords" and len(translated_content) > 100:
+                                translated_content = truncate_keywords(translated_content, 100)
+                            elif field == "promotional_text" and len(translated_content) > 170:
+                                translated_content = translated_content[:170]
+                            elif field == "description" and len(translated_content) > 4000:
+                                translated_content = translated_content[:4000]
+                            elif field == "whats_new" and len(translated_content) > 4000:
+                                translated_content = translated_content[:4000]
                             
                             # Map to API field names
                             api_field_name = {
@@ -617,15 +632,24 @@ class TranslateRCLI:
                             
                             update_data[api_field_name] = translated_content
                     
-                    # Update the localization
-                    self.asc_client.update_app_store_version_localization(
-                        localization_id=localization_ids[target_locale],
-                        **update_data
-                    )
+                    # Try to update the localization
+                    try:
+                        self.asc_client.update_app_store_version_localization(
+                            localization_id=localization_ids[target_locale],
+                            **update_data
+                        )
+                        print_success(f"  ✅ {language_name} updated successfully")
+                        success_count += 1
+                        
+                    except Exception as update_error:
+                        if "409" in str(update_error):
+                            print_warning(f"  ⚠️  Update failed due to API conflict. This localization may be locked.")
+                            print_error(f"  ❌ Skipping {language_name}: {str(update_error)}")
+                            continue
+                        else:
+                            raise update_error
                     
-                    print_success(f"  ✅ {language_name} updated successfully")
-                    success_count += 1
-                    time.sleep(2)  # Rate limiting
+                    time.sleep(3)  # Rate limiting
                     
                 except Exception as e:
                     print_error(f"  ❌ Failed to update {language_name}: {str(e)}")
@@ -953,7 +977,10 @@ class TranslateRCLI:
                             max_length=get_field_limit("keywords"),
                             is_keywords=True
                         )
-                        translated_data["keywords"] = truncate_keywords(translated_keywords)
+                        # Clean and format keywords properly
+                        translated_keywords = translated_keywords.strip().rstrip('.')
+                        translated_keywords = truncate_keywords(translated_keywords, 100)
+                        translated_data["keywords"] = translated_keywords
                     
                     # Promotional text
                     if base_data.get("promotionalText"):

@@ -107,10 +107,13 @@ class ConfigManager:
         instructions = """You are a professional translator specializing in App Store metadata translation.
 
 CRITICAL REQUIREMENTS:
-1. Character Limits: NEVER exceed the specified character limit for any field
+1. Character Limits: ABSOLUTELY NEVER exceed the specified character limit for any field
+   - If needed, make translations slightly more concise while preserving meaning
+   - Use shorter synonyms or rephrase sentences when character limit is approached
+   - MEANING AND CONTEXT MUST NEVER BE COMPROMISED - only make minor adjustments for length
 2. Marketing Tone: Maintain the marketing style and appeal of the original text
 3. Cultural Adaptation: Adapt content for the target market while preserving meaning
-4. Keywords: For keyword fields, provide comma-separated values optimized for App Store search
+4. Keywords: For keyword fields, provide comma-separated values with NO SPACES after commas for ASO optimization
 
 FIELD-SPECIFIC GUIDELINES:
 - App Name (30 chars): Keep brand recognition, may transliterate if needed
@@ -121,15 +124,29 @@ FIELD-SPECIFIC GUIDELINES:
 - What's New (4000 chars): Version update highlights
 
 TRANSLATION PRINCIPLES:
+- Natural Language Flow: Translations MUST feel natural to native speakers of the target language
+  * This is CRITICAL for user engagement and conversion rates
+  * Avoid literal translations that sound robotic or foreign
+  * Use expressions and phrasing that locals would naturally use
 - Preserve brand voice and personality
 - Use native expressions and idioms when appropriate
 - Optimize for local App Store search algorithms
 - Ensure cultural relevance and sensitivity
 - Maintain technical accuracy for feature descriptions
 
-If the character limit is specified, your translation MUST be within that limit.
-Do not add ellipsis (...) at the end unless the original text has it.
-Focus on creating the most impactful message within the constraints."""
+ABSOLUTE CHARACTER LIMIT ENFORCEMENT:
+- If character limit is specified, your translation MUST be within that limit
+- Count characters carefully before responding
+- If translation exceeds limit, use these strategies IN ORDER:
+  1. Remove unnecessary words (articles, modifiers) while preserving meaning
+  2. Use shorter synonyms or equivalent expressions
+  3. Rephrase sentences more concisely
+  4. NEVER sacrifice core meaning or context for length
+- Do not add ellipsis (...) at the end unless the original text has it
+- For keywords: Format as "word1,word2,word3" (no spaces after commas)
+- Focus on creating the most impactful message within the constraints
+
+CRITICAL: If you cannot stay within character limits while preserving meaning, prioritize meaning over strict length compliance, but inform about the issue."""
         
         with open(self.instructions_file, "w") as f:
             f.write(instructions)

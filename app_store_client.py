@@ -9,6 +9,7 @@ import jwt
 import time
 import requests
 from typing import Dict, Any, Optional, List
+import random
 
 
 class AppStoreConnectClient:
@@ -45,17 +46,29 @@ class AppStoreConnectClient:
     
     def _request(self, method: str, endpoint: str, 
                  params: Optional[Dict[str, Any]] = None, 
-                 data: Optional[Dict[str, Any]] = None) -> Any:
-        """Make authenticated request to App Store Connect API."""
+                 data: Optional[Dict[str, Any]] = None,
+                 max_retries: int = 3) -> Any:
+        """Make authenticated request to App Store Connect API with retry logic."""
         headers = {
             "Authorization": f"Bearer {self._generate_token()}",
             "Content-Type": "application/json"
         }
         url = f"{self.BASE_URL}/{endpoint}"
         
-        response = requests.request(method, url, headers=headers, params=params, json=data)
-        response.raise_for_status()
-        return response.json()
+        for attempt in range(max_retries + 1):
+            try:
+                response = requests.request(method, url, headers=headers, params=params, json=data)
+                response.raise_for_status()
+                return response.json()
+            except requests.exceptions.HTTPError as e:
+                if response.status_code == 409 and attempt < max_retries:
+                    # Conflict error - retry with exponential backoff
+                    wait_time = (2 ** attempt) + random.uniform(0, 1)
+                    print(f"⚠️  API conflict detected, retrying in {wait_time:.1f}s (attempt {attempt + 1}/{max_retries + 1})...")
+                    time.sleep(wait_time)
+                    continue
+                else:
+                    raise e
     
     def get_apps(self) -> Any:
         """Get list of apps."""
@@ -389,3 +402,4 @@ class AppStoreConnectClient:
         except Exception as e:
             print(f"Error copying localization: {e}")
             return False
+    

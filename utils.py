@@ -75,18 +75,30 @@ def truncate_keywords(keywords: str, max_length: int = 100) -> str:
         max_length: Maximum character length allowed
         
     Returns:
-        Truncated keywords string
+        Truncated keywords string (ASO optimized format: word1,word2,word3)
     """
-    if not keywords or len(keywords) <= max_length:
+    if not keywords:
         return keywords
+        
+    # Clean input: remove trailing periods, extra spaces
+    keywords = keywords.strip().rstrip('.')
+    
+    if len(keywords) <= max_length:
+        # Still format properly even if under limit
+        keyword_list = [k.strip() for k in keywords.split(',')]
+        return ','.join(keyword_list)
     
     keyword_list = [k.strip() for k in keywords.split(',')]
     truncated_keywords = []
     current_length = 0
     
     for keyword in keyword_list:
-        # Calculate length including comma separator
-        new_length = current_length + len(keyword) + (2 if truncated_keywords else 0)
+        # Skip empty keywords
+        if not keyword:
+            continue
+            
+        # Calculate length including comma separator (no space for ASO optimization)
+        new_length = current_length + len(keyword) + (1 if truncated_keywords else 0)
         
         if new_length <= max_length:
             truncated_keywords.append(keyword)
@@ -94,7 +106,7 @@ def truncate_keywords(keywords: str, max_length: int = 100) -> str:
         else:
             break
     
-    return ', '.join(truncated_keywords)
+    return ','.join(truncated_keywords)
 
 
 def validate_field_length(text: str, field_name: str) -> bool:

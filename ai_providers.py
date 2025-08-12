@@ -113,7 +113,7 @@ class AnthropicProvider(AIProvider):
             
             # Log successful response
             log_ai_response("Anthropic Claude", translated_text, success=True)
-            return translated_text
+            return translated_text.strip()
             
         except Exception as e:
             # Log error response
@@ -198,7 +198,7 @@ class OpenAIProvider(AIProvider):
             
             # Log successful response
             log_ai_response("OpenAI GPT", translated_text, success=True)
-            return translated_text
+            return translated_text.strip()
             
         except Exception as e:
             # Log error response
@@ -294,7 +294,7 @@ class GoogleGeminiProvider(AIProvider):
             
             # Log successful response
             log_ai_response("Google Gemini", translated_text, success=True)
-            return translated_text
+            return translated_text.strip()
             
         except Exception as e:
             # Log error response
