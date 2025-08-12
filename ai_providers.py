@@ -73,10 +73,11 @@ class AnthropicProvider(AIProvider):
             
             if max_length:
                 system_message += (
-                    f" CRITICAL: Your translation MUST be {max_length} characters or fewer. "
-                    f"Do not add ellipsis (...) at the end. Create a concise but meaningful "
-                    f"translation that captures the essence of the original message while "
-                    f"staying within the character limit."
+                    f" CRITICAL: Your translation MUST be EXACTLY {max_length} characters or fewer "
+                    f"INCLUDING ALL SPACES, PUNCTUATION, AND SPECIAL CHARACTERS. Count every single "
+                    f"character including spaces between words. Do not add ellipsis (...) at the end. "
+                    f"Create a concise but meaningful translation that captures the essence of the "
+                    f"original message while staying within the character limit."
                 )
             
             data = {
@@ -103,7 +104,7 @@ class AnthropicProvider(AIProvider):
                 log_character_limit_retry("Anthropic Claude", len(translated_text), max_length)
                 
                 # Try again with even stricter instructions
-                system_message += f" The text MUST be under {max_length} characters. Prioritize brevity."
+                system_message += f" The text MUST be under {max_length} characters INCLUDING SPACES AND PUNCTUATION. Count every character. Prioritize brevity."
                 data["system"] = system_message
                 
                 response = requests.post(url, headers=headers, json=data)
@@ -157,10 +158,11 @@ class OpenAIProvider(AIProvider):
             
             if max_length:
                 system_message += (
-                    f" CRITICAL: Your translation MUST be {max_length} characters or fewer. "
-                    f"Do not add ellipsis (...) at the end. Create a concise but meaningful "
-                    f"translation that captures the essence of the original message while "
-                    f"staying within the character limit."
+                    f" CRITICAL: Your translation MUST be EXACTLY {max_length} characters or fewer "
+                    f"INCLUDING ALL SPACES, PUNCTUATION, AND SPECIAL CHARACTERS. Count every single "
+                    f"character including spaces between words. Do not add ellipsis (...) at the end. "
+                    f"Create a concise but meaningful translation that captures the essence of the "
+                    f"original message while staying within the character limit."
                 )
             
             data = {
@@ -188,7 +190,7 @@ class OpenAIProvider(AIProvider):
                 log_character_limit_retry("OpenAI GPT", len(translated_text), max_length)
                 
                 # Try again with even stricter instructions
-                system_message += f" The text MUST be under {max_length} characters. Prioritize brevity."
+                system_message += f" The text MUST be under {max_length} characters INCLUDING SPACES AND PUNCTUATION. Count every character. Prioritize brevity."
                 data["messages"][0]["content"] = system_message
                 
                 response = requests.post(url, headers=headers, json=data)
@@ -241,10 +243,11 @@ class GoogleGeminiProvider(AIProvider):
             
             if max_length:
                 prompt += (
-                    f" CRITICAL: Your translation MUST be {max_length} characters or fewer. "
-                    f"Do not add ellipsis (...) at the end. Create a concise but meaningful "
-                    f"translation that captures the essence of the original message while "
-                    f"staying within the character limit."
+                    f" CRITICAL: Your translation MUST be EXACTLY {max_length} characters or fewer "
+                    f"INCLUDING ALL SPACES, PUNCTUATION, AND SPECIAL CHARACTERS. Count every single "
+                    f"character including spaces between words. Do not add ellipsis (...) at the end. "
+                    f"Create a concise but meaningful translation that captures the essence of the "
+                    f"original message while staying within the character limit."
                 )
             
             prompt += f"\n\nText to translate: {text}"
@@ -284,7 +287,7 @@ class GoogleGeminiProvider(AIProvider):
                 log_character_limit_retry("Google Gemini", len(translated_text), max_length)
                 
                 # Try again with even stricter instructions
-                prompt += f" The text MUST be under {max_length} characters. Prioritize brevity."
+                prompt += f" The text MUST be under {max_length} characters INCLUDING SPACES AND PUNCTUATION. Count every character. Prioritize brevity."
                 data["contents"][0]["parts"][0]["text"] = prompt
                 
                 response = requests.post(url, headers=headers, json=data)

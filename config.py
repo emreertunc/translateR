@@ -115,6 +115,8 @@ class ConfigManager:
 
 CRITICAL REQUIREMENTS:
 1. Character Limits: ABSOLUTELY NEVER exceed the specified character limit for any field
+   - CHARACTER LIMITS INCLUDE ALL SPACES, PUNCTUATION, AND SPECIAL CHARACTERS
+   - Count every single character including spaces between words
    - If needed, make translations slightly more concise while preserving meaning
    - Use shorter synonyms or rephrase sentences when character limit is approached
    - MEANING AND CONTEXT MUST NEVER BE COMPROMISED - only make minor adjustments for length
@@ -143,7 +145,8 @@ TRANSLATION PRINCIPLES:
 
 ABSOLUTE CHARACTER LIMIT ENFORCEMENT:
 - If character limit is specified, your translation MUST be within that limit
-- Count characters carefully before responding
+- CHARACTER LIMITS INCLUDE ALL SPACES, PUNCTUATION, AND SPECIAL CHARACTERS
+- Count every single character including spaces between words carefully before responding
 - If translation exceeds limit, use these strategies IN ORDER:
   1. Remove unnecessary words (articles, modifiers) while preserving meaning
   2. Use shorter synonyms or equivalent expressions
