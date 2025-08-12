@@ -196,6 +196,20 @@ class TranslateRCLI:
         print_info("Translation Mode - Translate existing content to new languages")
         print()
         
+        # Ask user what to translate
+        print("Translation Options:")
+        print("1. Metadata Only (description, keywords, promotional text, what's new)")
+        print("2. Complete Translation (metadata + app name & subtitle)")
+        print()
+        
+        translation_choice = input("Select translation type (1-2): ").strip()
+        
+        if translation_choice not in ['1', '2']:
+            print_error("Invalid selection. Please choose 1 or 2.")
+            return True
+            
+        include_app_info = translation_choice == '2'
+        
         try:
             # Get app ID from user
             app_id = input("Enter your App ID: ").strip()
@@ -381,13 +395,125 @@ class TranslateRCLI:
                     continue
             
             print()
-            print_success("Translation workflow completed!")
+            print_success("Metadata translation completed!")
+            
+            # If user requested complete translation, also translate app name & subtitle
+            if include_app_info:
+                print()
+                print_info("Now translating app name & subtitle...")
+                self._translate_app_info(app_id, target_locales, provider)
             
         except Exception as e:
             print_error(f"Translation workflow failed: {str(e)}")
         
         input("\nPress Enter to continue...")
         return True
+    
+    def _translate_app_info(self, app_id: str, target_locales: List[str], provider):
+        """Helper method to translate app name and subtitle for given locales."""
+        try:
+            # Find primary app info ID
+            app_info_id = self.asc_client.find_primary_app_info_id(app_id)
+            if not app_info_id:
+                print_error("Could not find app info. App name & subtitle translation skipped.")
+                return
+            
+            # Get existing localizations
+            existing_localizations = self.asc_client.get_app_info_localizations(app_info_id)
+            existing_locales = []
+            localization_map = {}
+            
+            for loc in existing_localizations.get("data", []):
+                locale = loc["attributes"]["locale"]
+                existing_locales.append(locale)
+                localization_map[locale] = loc["id"]
+            
+            # Get base language data
+            base_locale = detect_base_language(existing_localizations.get("data", []))
+            if not base_locale:
+                print_error("No base language found for app info. Skipping app name & subtitle.")
+                return
+            
+            base_localization_id = localization_map[base_locale]
+            base_data = self.asc_client.get_app_info_localization(base_localization_id)
+            base_attrs = base_data.get("data", {}).get("attributes", {})
+            
+            base_name = base_attrs.get("name", "")
+            base_subtitle = base_attrs.get("subtitle", "")
+            
+            if not base_name and not base_subtitle:
+                print_warning("No name or subtitle found in base language. Skipping app name & subtitle.")
+                return
+            
+            print()
+            print_info(f"Translating app name & subtitle from {APP_STORE_LOCALES.get(base_locale, base_locale)}")
+            if base_name:
+                print(f"📱 Name: {base_name}")
+            if base_subtitle:
+                print(f"📝 Subtitle: {base_subtitle}")
+            
+            success_count = 0
+            
+            for i, target_locale in enumerate(target_locales, 1):
+                language_name = APP_STORE_LOCALES.get(target_locale, target_locale)
+                print()
+                print(format_progress(i, len(target_locales), f"Translating {language_name} app info"))
+                
+                try:
+                    translated_data = {}
+                    
+                    # Translate name
+                    if base_name:
+                        print(f"  • Translating app name...")
+                        translated_name = provider.translate(
+                            base_name,
+                            language_name,
+                            max_length=30
+                        )
+                        if len(translated_name) > 30:
+                            translated_name = translated_name[:30]
+                        translated_data["name"] = translated_name
+                    
+                    # Translate subtitle
+                    if base_subtitle:
+                        print(f"  • Translating subtitle...")
+                        translated_subtitle = provider.translate(
+                            base_subtitle,
+                            language_name,
+                            max_length=30
+                        )
+                        if len(translated_subtitle) > 30:
+                            translated_subtitle = translated_subtitle[:30]
+                        translated_data["subtitle"] = translated_subtitle
+                    
+                    # Create or update app info localization
+                    if target_locale in existing_locales:
+                        # Update existing
+                        self.asc_client.update_app_info_localization(
+                            localization_map[target_locale],
+                            **translated_data
+                        )
+                    else:
+                        # Create new
+                        self.asc_client.create_app_info_localization(
+                            app_info_id,
+                            target_locale,
+                            **translated_data
+                        )
+                    
+                    print_success(f"  ✅ {language_name} app info translation completed")
+                    success_count += 1
+                    time.sleep(1)  # Rate limiting
+                    
+                except Exception as e:
+                    print_error(f"  ❌ Failed to translate {language_name} app info: {str(e)}")
+                    continue
+            
+            print()
+            print_success(f"App name & subtitle translation completed! {success_count}/{len(target_locales)} languages processed")
+            
+        except Exception as e:
+            print_error(f"App info translation failed: {str(e)}")
     
     def update_mode(self):
         """Handle update existing localizations workflow."""
