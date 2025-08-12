@@ -7,6 +7,9 @@ CLAUDE.md
 .claude/
 logs/
 
+# Export files (contain sensitive app data)
+existing_localizations/
+
 # Generated config files
 config/providers.json
 config/instructions.txt

@@ -4,7 +4,9 @@ Utility Functions
 Common helper functions used throughout the application.
 """
 
-from typing import Dict, List, Optional
+import os
+from datetime import datetime
+from typing import Dict, List, Optional, Any
 
 
 # App Store supported locales with their language names
@@ -194,3 +196,79 @@ def print_warning(message: str):
 def print_info(message: str):
     """Print info message with formatting."""
     print(f"ℹ️  {message}")
+
+
+def export_existing_localizations(localizations_data: List[Dict[str, Any]], app_name: str = "Unknown App", app_id: str = "unknown", version_string: str = "unknown") -> str:
+    """
+    Export existing localizations to a timestamped file.
+    
+    Args:
+        localizations_data: List of localization data from App Store Connect API
+        app_name: Name of the app for the export file
+        app_id: App ID for the export file
+        version_string: App version string for the export file
+        
+    Returns:
+        Path to the created export file
+    """
+    timestamp = datetime.now().strftime("%d%m%Y_%H.%M")
+    
+    # Clean app name for filename (remove spaces, special characters)
+    clean_app_name = "".join(c.lower() for c in app_name if c.isalnum() or c in "-_")[:20]
+    if not clean_app_name:
+        clean_app_name = "unknown_app"
+    
+    # Clean version string for filename
+    clean_version = "".join(c for c in version_string if c.isalnum() or c in ".-_")
+    if not clean_version or clean_version == "unknown":
+        clean_version = "v_unknown"
+    elif not clean_version.startswith('v'):
+        clean_version = f"v{clean_version}"
+    
+    os.makedirs("existing_localizations", exist_ok=True)
+    filename = f"existing_localizations/{clean_app_name}_{app_id}_{clean_version}_{timestamp}.txt"
+    
+    with open(filename, "w", encoding="utf-8") as f:
+        f.write(f"=== EXISTING LOCALIZATIONS EXPORT ===\n")
+        f.write(f"App: {app_name}\n")
+        f.write(f"App ID: {app_id}\n")
+        f.write(f"Version: {version_string}\n")
+        f.write(f"Export Date: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
+        f.write(f"Total Languages: {len(localizations_data)}\n")
+        f.write("=" * 50 + "\n\n")
+        
+        for localization in localizations_data:
+            attributes = localization.get("attributes", {})
+            locale = attributes.get("locale", "Unknown")
+            language_name = APP_STORE_LOCALES.get(locale, "Unknown Language")
+            
+            f.write(f"{language_name} ({locale}):\n")
+            f.write("-" * 30 + "\n")
+            
+            name = attributes.get("name")
+            if name:
+                f.write(f"Name: {name}\n")
+            
+            subtitle = attributes.get("subtitle") 
+            if subtitle:
+                f.write(f"Subtitle: {subtitle}\n")
+            
+            description = attributes.get("description")
+            if description:
+                f.write(f"Description: {description}\n")
+            
+            keywords = attributes.get("keywords")
+            if keywords:
+                f.write(f"Keywords: {keywords}\n")
+            
+            promotional_text = attributes.get("promotionalText")
+            if promotional_text:
+                f.write(f"Promotional Text: {promotional_text}\n")
+            
+            whats_new = attributes.get("whatsNew")
+            if whats_new:
+                f.write(f"What's New: {whats_new}\n")
+            
+            f.write("\n")
+    
+    return filename

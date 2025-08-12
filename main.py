@@ -21,7 +21,8 @@ from ai_providers import AIProviderManager, AnthropicProvider, OpenAIProvider, G
 from utils import (
     APP_STORE_LOCALES, FIELD_LIMITS, 
     detect_base_language, truncate_keywords, get_field_limit,
-    print_success, print_error, print_warning, print_info, format_progress
+    print_success, print_error, print_warning, print_info, format_progress,
+    export_existing_localizations
 )
 
 
@@ -162,11 +163,12 @@ class TranslateRCLI:
         print("3. 📋 Copy Mode - Copy from previous version") 
         print("4. 🚀 Full Setup Mode - Complete localization setup")
         print("5. 📱 App Name & Subtitle Mode - Translate app name and subtitle")
-        print("6. ⚙️  Configuration - Manage API keys and settings")
-        print("7. ❌ Exit")
+        print("6. 📄 Export Localizations - Export existing localizations to file")
+        print("7. ⚙️  Configuration - Manage API keys and settings")
+        print("8. ❌ Exit")
         print()
         
-        choice = input("Select an option (1-7): ").strip()
+        choice = input("Select an option (1-8): ").strip()
         
         if choice == "1":
             return self.translation_mode()
@@ -179,12 +181,14 @@ class TranslateRCLI:
         elif choice == "5":
             return self.app_name_subtitle_mode()
         elif choice == "6":
-            return self.configuration_mode()
+            return self.export_localizations_mode()
         elif choice == "7":
+            return self.configuration_mode()
+        elif choice == "8":
             print_info("Thank you for using TranslateR!")
             return False
         else:
-            print_error("Invalid choice. Please select 1-7.")
+            print_error("Invalid choice. Please select 1-8.")
             return True
     
     def translation_mode(self):
@@ -1294,6 +1298,156 @@ class TranslateRCLI:
             
         except Exception as e:
             print_error(f"App name & subtitle translation failed: {str(e)}")
+        
+        input("\nPress Enter to continue...")
+        return True
+    
+    def export_localizations_mode(self):
+        """Handle export existing localizations workflow."""
+        print_info("Export Localizations Mode - Export all existing localizations to file")
+        print()
+        
+        try:
+            # Get app ID from user
+            app_id = input("Enter your App ID: ").strip()
+            if not app_id:
+                print_error("App ID is required")
+                return True
+            
+            # Get app name for export file
+            apps_response = self.asc_client.get_apps()
+            app_name = "Unknown App"
+            for app in apps_response.get("data", []):
+                if app["id"] == app_id:
+                    app_name = app.get("attributes", {}).get("name", "Unknown App")
+                    break
+            
+            print_info(f"Found app: {app_name}")
+            
+            # Ask for which version to export
+            print()
+            print("Export options:")
+            print("1. Latest App Store version")
+            print("2. Specific version")
+            
+            version_choice = input("Select option (1-2): ").strip()
+            
+            version_string = "unknown"
+            
+            if version_choice == "1":
+                # Get latest version with version string info
+                versions_response = self.asc_client._request("GET", f"apps/{app_id}/appStoreVersions")
+                versions = versions_response.get("data", [])
+                
+                if not versions:
+                    print_error("No App Store version found for this app")
+                    return True
+                
+                version_id = versions[0]["id"]
+                version_string = versions[0]["attributes"].get("versionString", "unknown")
+                print_success(f"Using latest version: {version_string} ({version_id})")
+            
+            elif version_choice == "2":
+                versions_response = self.asc_client._request("GET", f"apps/{app_id}/appStoreVersions")
+                versions = versions_response.get("data", [])
+                
+                if not versions:
+                    print_error("No versions found for this app")
+                    return True
+                
+                print()
+                print("Available versions:")
+                for i, version in enumerate(versions[:10], 1):
+                    attrs = version["attributes"]
+                    print(f"{i}. Version {attrs.get('versionString', 'Unknown')} - {attrs.get('appStoreState', 'Unknown')}")
+                
+                while True:
+                    try:
+                        choice = int(input("Select version (number): ").strip())
+                        if 1 <= choice <= len(versions):
+                            version_id = versions[choice - 1]["id"]
+                            version_string = versions[choice - 1]["attributes"].get("versionString", "Unknown")
+                            print_success(f"Selected version: {version_string}")
+                            break
+                        else:
+                            print_error("Invalid choice")
+                    except ValueError:
+                        print_error("Please enter a number")
+            
+            else:
+                print_error("Invalid choice")
+                return True
+            
+            # Get version localizations
+            print()
+            print_info("Fetching version localizations...")
+            localizations_response = self.asc_client.get_app_store_version_localizations(version_id)
+            version_localizations = localizations_response.get("data", [])
+            
+            # Get app info localizations
+            print_info("Fetching app info localizations...")
+            app_info_id = self.asc_client.find_primary_app_info_id(app_id)
+            app_info_localizations = []
+            
+            if app_info_id:
+                app_info_response = self.asc_client.get_app_info_localizations(app_info_id)
+                app_info_localizations = app_info_response.get("data", [])
+            
+            # Combine both types of localizations
+            all_localizations = []
+            
+            # Process version localizations
+            for version_loc in version_localizations:
+                locale = version_loc.get("attributes", {}).get("locale")
+                combined_attrs = version_loc.get("attributes", {}).copy()
+                
+                # Find matching app info localization
+                for app_info_loc in app_info_localizations:
+                    if app_info_loc.get("attributes", {}).get("locale") == locale:
+                        app_info_attrs = app_info_loc.get("attributes", {})
+                        if app_info_attrs.get("name"):
+                            combined_attrs["name"] = app_info_attrs["name"]
+                        if app_info_attrs.get("subtitle"):
+                            combined_attrs["subtitle"] = app_info_attrs["subtitle"]
+                        break
+                
+                all_localizations.append({
+                    "id": version_loc.get("id"),
+                    "type": version_loc.get("type"),
+                    "attributes": combined_attrs
+                })
+            
+            if not all_localizations:
+                print_error("No localizations found for this app")
+                return True
+            
+            print_success(f"Found {len(all_localizations)} localizations")
+            
+            # Export to file
+            print()
+            print_info("Creating export file...")
+            export_path = export_existing_localizations(all_localizations, app_name, app_id, version_string)
+            
+            print_success(f"Export completed successfully!")
+            print_info(f"File saved to: {export_path}")
+            
+            # Show summary
+            locales_summary = []
+            for loc in all_localizations[:5]:
+                locale = loc["attributes"].get("locale", "Unknown")
+                language_name = APP_STORE_LOCALES.get(locale, "Unknown")
+                locales_summary.append(f"{locale} ({language_name})")
+            
+            if len(all_localizations) > 5:
+                locales_summary.append(f"... and {len(all_localizations) - 5} more")
+            
+            print()
+            print_info("Exported languages:")
+            for lang in locales_summary:
+                print(f"  • {lang}")
+            
+        except Exception as e:
+            print_error(f"Export failed: {str(e)}")
         
         input("\nPress Enter to continue...")
         return True
