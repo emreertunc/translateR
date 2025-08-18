@@ -57,9 +57,9 @@ TranslateR connects to your App Store Connect account and automatically translat
 - **GPT**: [Get key](https://platform.openai.com/) - Most reliable
 - **Gemini**: [Get key](https://makersuite.google.com/) - Fastest
 
-## 5 Main Workflows
+## 6 Main Workflows
 
-### 1. 🔄 Translation Mode
+### 1. 🌐 Translation Mode
 **Use when**: Adding new languages to your app
 
 - Detects your base language (usually English)
@@ -67,7 +67,7 @@ TranslateR connects to your App Store Connect account and automatically translat
 - Translates all metadata fields
 - Creates new localizations
 
-### 2. ✏️ Update Mode
+### 2. 🔄 Update Mode
 **Use when**: Updating existing translations (e.g., new "What's New" content)
 
 - Updates specific fields in existing languages
@@ -81,7 +81,7 @@ TranslateR connects to your App Store Connect account and automatically translat
 - No translation needed
 - Fast setup for new versions
 
-### 4. 🌐 Full Setup Mode  
+### 4. 🚀 Full Setup Mode  
 **Use when**: Complete localization for new apps
 
 - Translate into ALL 38+ supported languages
@@ -95,6 +95,14 @@ TranslateR connects to your App Store Connect account and automatically translat
 - 30-character limits enforced
 - Brand-focused translations
 
+### 6. 📄 Export Localizations
+**Use when**: Backing up or analyzing existing localizations
+
+- Export all existing localizations to timestamped file
+- Choose latest version or specific version
+- Complete backup with all metadata fields
+- Creates organized JSON export with app details
+
 ## Supported Fields & Languages
 
 **Fields**: Description (4000 chars), Keywords (100 chars), Promotional Text (170 chars), What's New (4000 chars), App Name (30 chars), Subtitle (30 chars)
@@ -107,11 +115,12 @@ TranslateR connects to your App Store Connect account and automatically translat
 $ python3 main.py
 
 TranslateR - App Store Localization Tool
-1. 🔄 Translation Mode
-2. ✏️ Update Mode  
+1. 🌐 Translation Mode
+2. 🔄 Update Mode  
 3. 📋 Copy Mode
-4. 🌐 Full Setup Mode
+4. 🚀 Full Setup Mode
 5. 📱 App Name & Subtitle Mode
+6. 📄 Export Localizations
 
 Choose: 1
 
