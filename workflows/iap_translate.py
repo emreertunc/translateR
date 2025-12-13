@@ -229,8 +229,9 @@ def run(cli) -> bool:
         base_attrs = next((l.get("attributes", {}) for l in localizations if l.get("attributes", {}).get("locale") == base_locale), {})
         base_name = base_attrs.get("name", "")
         base_description = base_attrs.get("description", "")
-        if not base_name and not base_description:
-            print_error("Base localization is missing name/description; skipping")
+        if not (base_name or "").strip():
+            # Name is required for InAppPurchaseLocalizationCreateRequest; without it we cannot create new locales.
+            print_error("Base localization is missing required name; skipping")
             continue
         print_info(f"Base language: {APP_STORE_LOCALES.get(base_locale, base_locale)} [{base_locale}]")
 
@@ -246,8 +247,14 @@ def run(cli) -> bool:
         def _task(loc: str):
             language_name = APP_STORE_LOCALES.get(loc, loc)
             translated = {}
-            if base_name:
-                translated["name"] = provider.translate(base_name, language_name, max_length=name_limit, seed=seed, refinement=refine_phrase)
+            # Name is required; retry once if the model returns empty.
+            translated_name = provider.translate(base_name, language_name, max_length=name_limit, seed=seed, refinement=refine_phrase) or ""
+            if not translated_name.strip():
+                stronger = (refine_phrase or "").strip()
+                extra = " Do not return an empty string. Return ONLY the translated text."
+                stronger = (stronger + extra).strip() if stronger else extra.strip()
+                translated_name = provider.translate(base_name, language_name, max_length=name_limit, seed=seed, refinement=stronger) or ""
+            translated["name"] = translated_name.strip()
             if base_description:
                 translated["description"] = provider.translate(base_description, language_name, max_length=desc_limit, seed=seed, refinement=refine_phrase)
             time.sleep(1)
@@ -266,6 +273,18 @@ def run(cli) -> bool:
         except Exception:
             pass
         for loc, data in results.items():
+            if not (data.get("name") or "").strip():
+                language_name = APP_STORE_LOCALES.get(loc, loc)
+                print_error(f"  ❌ Skipping {language_name}: translated name is empty (required)")
+                completed += 1
+                try:
+                    line = format_progress(completed, total_targets, f"Skipped {APP_STORE_LOCALES.get(loc, loc)}")
+                    pad = max(0, last_progress_len - len(line))
+                    print("\r" + line + (" " * pad), end="")
+                    last_progress_len = len(line)
+                except Exception:
+                    pass
+                continue
             loc_id = existing_locale_ids.get(loc)
             try:
                 if loc_id:

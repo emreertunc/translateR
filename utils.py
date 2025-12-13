@@ -73,6 +73,10 @@ FIELD_LIMITS = {
     "subscription_description": 200,
     "subscription_group_name": 60,
     "subscription_group_custom_app_name": 30,
+    # In-app events (App Store in-app events)
+    "app_event_name": 30,
+    "app_event_short_description": 50,
+    "app_event_long_description": 120,
 }
 
 

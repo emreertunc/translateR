@@ -691,4 +691,191 @@ class AppStoreConnectClient:
             }
         }
         return self._request("PATCH", f"inAppPurchaseLocalizations/{localization_id}", data=data)
+
+    # ----------------------
+    # In-App Events (App Events)
+    # ----------------------
+
+    def get_app_events(self, app_id: str, limit: int = 200) -> Any:
+        """List in-app events (appEvents) for an app."""
+        params = {"limit": max(1, min(limit, 200))}
+        return self._request("GET", f"v1/apps/{app_id}/appEvents", params=params)
+
+    def get_app_event_localizations(self, app_event_id: str, limit: int = 200) -> Any:
+        """Get localizations for a specific in-app event (appEvents).
+
+        Note: Some App Store Connect responses may omit attributes unless fields are requested.
+        We explicitly request locale + translatable fields so workflows can reliably detect existing locales.
+        """
+        params = {
+            "limit": max(1, min(limit, 200)),
+            "fields[appEventLocalizations]": "locale,name,shortDescription,longDescription",
+        }
+        return self._request("GET", f"v1/appEvents/{app_event_id}/localizations", params=params)
+
+    def get_app_event(self, app_event_id: str, include_localizations: bool = False) -> Any:
+        """Get a single app event, optionally including localizations."""
+        params: Dict[str, Any] = {}
+        if include_localizations:
+            params["include"] = "localizations"
+            params["limit[localizations]"] = 50
+            params["fields[appEventLocalizations]"] = "locale,name,shortDescription,longDescription"
+        return self._request("GET", f"v1/appEvents/{app_event_id}", params=params or None)
+
+    def _get_app_event_localization_id_map(self, app_event_id: str) -> Dict[str, str]:
+        """Best-effort map of locale -> appEventLocalization id for an event."""
+        loc_map: Dict[str, str] = {}
+        # Primary: /localizations endpoint
+        try:
+            locs = self.get_app_event_localizations(app_event_id)
+            for l in (locs.get("data", []) if isinstance(locs, dict) else []):
+                attrs = (l.get("attributes", {}) or {})
+                locale = (attrs.get("locale") or "").strip()
+                lid = l.get("id")
+                if locale and lid:
+                    loc_map[locale] = lid
+        except Exception:
+            pass
+        if loc_map:
+            return loc_map
+
+        # Fallback: include localizations from appEvents/{id}
+        try:
+            resp = self.get_app_event(app_event_id, include_localizations=True)
+            included = resp.get("included", []) if isinstance(resp, dict) else []
+            for item in included:
+                if item.get("type") != "appEventLocalizations":
+                    continue
+                attrs = (item.get("attributes", {}) or {})
+                locale = (attrs.get("locale") or "").strip()
+                lid = item.get("id")
+                if locale and lid:
+                    loc_map[locale] = lid
+        except Exception:
+            pass
+        return loc_map
+
+    def _app_event_localization_id_for_locale(self, loc_map: Dict[str, str], locale: str) -> str:
+        """Return localization id for an exact locale, with safe fallback for root-only locales.
+
+        Only allows root matching when the requested locale has no region/script
+        (e.g., "fi" can match "fi-FI"). Never maps "en-AU" to "en-US".
+        """
+        if not locale:
+            return ""
+        loc_id = loc_map.get(locale)
+        if loc_id:
+            return loc_id
+        if "-" in locale:
+            return ""
+        root = locale.split("-")[0].lower()
+        matches = [
+            lid
+            for code, lid in loc_map.items()
+            if code and code.split("-")[0].lower() == root and lid
+        ]
+        return matches[0] if len(matches) == 1 else ""
+
+    def get_app_event_localization(self, localization_id: str) -> Any:
+        """Get a single app event localization."""
+        return self._request("GET", f"v1/appEventLocalizations/{localization_id}")
+
+    def create_app_event_localization(
+        self,
+        app_event_id: str,
+        locale: str,
+        name: Optional[str] = None,
+        short_description: Optional[str] = None,
+        long_description: Optional[str] = None,
+    ) -> Any:
+        """Create a localization for an in-app event (name + short/long descriptions)."""
+        name_limit = get_field_limit("app_event_name") or (len(name) if name else 0)
+        short_limit = get_field_limit("app_event_short_description") or (len(short_description) if short_description else 0)
+        long_limit = get_field_limit("app_event_long_description") or (len(long_description) if long_description else 0)
+
+        attrs: Dict[str, Any] = {"locale": locale}
+        safe_name = (name or "").strip() if name is not None else ""
+        if safe_name:
+            attrs["name"] = safe_name[:name_limit]
+        safe_short = (short_description or "").strip() if short_description is not None else ""
+        if safe_short:
+            attrs["shortDescription"] = safe_short[:short_limit]
+        safe_long = (long_description or "").strip() if long_description is not None else ""
+        # ASC rejects too-short longDescription with ENTITY_ERROR.ATTRIBUTE.INVALID (min length 2)
+        if safe_long and len(safe_long) >= 2:
+            attrs["longDescription"] = safe_long[:long_limit]
+
+        data = {
+            "data": {
+                "type": "appEventLocalizations",
+                "attributes": attrs,
+                "relationships": {
+                    "appEvent": {
+                        "data": {
+                            "type": "appEvents",
+                            "id": app_event_id,
+                        }
+                    }
+                },
+            }
+        }
+        try:
+            return self._request("POST", "v1/appEventLocalizations", data=data, max_retries=0)
+        except requests.exceptions.HTTPError as e:
+            status = getattr(e.response, "status_code", None)
+            if status == 409:
+                if str(getattr(__import__("os"), "environ", {}).get("TRANSLATER_DEBUG_APP_EVENTS", "")).strip().lower() in ("1", "true", "yes", "y", "on"):
+                    try:
+                        body = e.response.json()
+                    except Exception:
+                        body = getattr(e.response, "text", None)
+                    print(f"[debug] appEventLocalizations create 409 locale={locale} event_id={app_event_id} body={body}")
+                try:
+                    loc_map = self._get_app_event_localization_id_map(app_event_id)
+                    loc_id = self._app_event_localization_id_for_locale(loc_map, locale)
+                    if loc_id:
+                        return self.update_app_event_localization(
+                            loc_id,
+                            name=name,
+                            short_description=short_description,
+                            long_description=long_description,
+                        )
+                except Exception:
+                    pass
+            raise
+
+    def update_app_event_localization(
+        self,
+        localization_id: str,
+        name: Optional[str] = None,
+        short_description: Optional[str] = None,
+        long_description: Optional[str] = None,
+    ) -> Any:
+        """Update an existing app event localization."""
+        attrs: Dict[str, Any] = {}
+        if name is not None:
+            safe = (name or "").strip()
+            if safe:
+                limit = get_field_limit("app_event_name") or len(safe)
+                attrs["name"] = safe[:limit]
+        if short_description is not None:
+            safe = (short_description or "").strip()
+            if safe:
+                limit = get_field_limit("app_event_short_description") or len(safe)
+                attrs["shortDescription"] = safe[:limit]
+        if long_description is not None:
+            safe = (long_description or "").strip()
+            if safe and len(safe) >= 2:
+                limit = get_field_limit("app_event_long_description") or len(safe)
+                attrs["longDescription"] = safe[:limit]
+        if not attrs:
+            return self.get_app_event_localization(localization_id)
+        data = {
+            "data": {
+                "type": "appEventLocalizations",
+                "id": localization_id,
+                "attributes": attrs,
+            }
+        }
+        return self._request("PATCH", f"v1/appEventLocalizations/{localization_id}", data=data, max_retries=0)
     

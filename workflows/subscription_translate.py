@@ -249,6 +249,10 @@ def run(cli) -> bool:
                 return existing_locale_ids
 
         def _unique_root_match(loc_map: Dict[str, str], locale_code: str) -> str:
+            # Never map region/script locales like en-AU to a different variant like en-US.
+            # Only allow root matching when the requested locale has no region/script (e.g., fi vs fi-FI).
+            if "-" in (locale_code or ""):
+                return ""
             root = locale_code.split("-")[0].lower()
             matches = [lid for code, lid in loc_map.items() if code and code.split("-")[0].lower() == root]
             return matches[0] if len(matches) == 1 else ""
@@ -312,9 +316,13 @@ def run(cli) -> bool:
                         loc_obj = next((l for l in refreshed.get("data", []) if l.get("attributes", {}).get("locale") == loc), None)
                         if not loc_obj:
                             # Try unique language-root match only when unambiguous (avoid en-US/en-GB conflicts)
-                            root = loc.split("-")[0].lower()
-                            candidates = [l for l in refreshed.get("data", []) if l.get("attributes", {}).get("locale", "").split("-")[0].lower() == root]
-                            loc_obj = candidates[0] if len(candidates) == 1 else None
+                            if "-" not in (loc or ""):
+                                root = loc.split("-")[0].lower()
+                                candidates = [
+                                    l for l in refreshed.get("data", [])
+                                    if l.get("attributes", {}).get("locale", "").split("-")[0].lower() == root
+                                ]
+                                loc_obj = candidates[0] if len(candidates) == 1 else None
                         if loc_obj:
                             attrs = loc_obj.get("attributes", {})
                             desired_name = data.get("name")
