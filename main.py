@@ -21,6 +21,7 @@ from ai_providers import AIProviderManager, AnthropicProvider, OpenAIProvider, G
 from utils import (
     APP_STORE_LOCALES, FIELD_LIMITS, 
     detect_base_language, truncate_keywords, get_field_limit,
+    find_matching_locale_entry,
     print_success, print_error, print_warning, print_info, format_progress,
     export_existing_localizations
 )
@@ -163,12 +164,13 @@ class TranslateRCLI:
         print("3. 📋 Copy Mode - Copy from previous version") 
         print("4. 🚀 Full Setup Mode - Complete localization setup")
         print("5. 📱 App Name & Subtitle Mode - Translate app name and subtitle")
-        print("6. 📄 Export Localizations - Export existing localizations to file")
-        print("7. ⚙️  Configuration - Manage API keys and settings")
-        print("8. ❌ Exit")
+        print("6. ♻️  Revert App Name - Set app name to base language for all locales")
+        print("7. 📄 Export Localizations - Export existing localizations to file")
+        print("8. ⚙️  Configuration - Manage API keys and settings")
+        print("9. ❌ Exit")
         print()
         
-        choice = input("Select an option (1-8): ").strip()
+        choice = input("Select an option (1-9): ").strip()
         
         if choice == "1":
             return self.translation_mode()
@@ -181,14 +183,16 @@ class TranslateRCLI:
         elif choice == "5":
             return self.app_name_subtitle_mode()
         elif choice == "6":
-            return self.export_localizations_mode()
+            return self.revert_app_name_mode()
         elif choice == "7":
-            return self.configuration_mode()
+            return self.export_localizations_mode()
         elif choice == "8":
+            return self.configuration_mode()
+        elif choice == "9":
             print_info("Thank you for using TranslateR!")
             return False
         else:
-            print_error("Invalid choice. Please select 1-8.")
+            print_error("Invalid choice. Please select 1-9.")
             return True
     
     def translation_mode(self):
@@ -273,6 +277,7 @@ class TranslateRCLI:
             
             print()
             print("Enter target language locales (comma-separated, e.g., 'de-DE,fr-FR,es-ES'):")
+            print("• Enter 'all' to select all available languages")
             target_input = input("Target languages: ").strip()
             
             if not target_input:
@@ -280,12 +285,15 @@ class TranslateRCLI:
                 return True
             
             # Parse target languages
-            target_locales = [locale.strip() for locale in target_input.split(",")]
-            invalid_locales = [loc for loc in target_locales if loc not in available_targets]
-            
-            if invalid_locales:
-                print_error(f"Invalid language codes: {', '.join(invalid_locales)}")
-                return True
+            if target_input.lower() == 'all':
+                target_locales = list(available_targets.keys())
+            else:
+                target_locales = [locale.strip() for locale in target_input.split(",")]
+                invalid_locales = [loc for loc in target_locales if loc not in available_targets]
+                
+                if invalid_locales:
+                    print_error(f"Invalid language codes: {', '.join(invalid_locales)}")
+                    return True
             
             # Select AI provider
             providers = self.ai_manager.list_providers()
@@ -383,11 +391,21 @@ class TranslateRCLI:
                     if "409" in error_message and "Conflict" in error_message:
                         # Check if localization actually exists or if it needs to be created in App Store Connect first
                         existing_localizations = self.asc_client.get_app_store_version_localizations(version_id)
-                        locale_exists = any(loc["attributes"]["locale"] == target_locale 
-                                          for loc in existing_localizations.get("data", []))
+                        locale_entry = find_matching_locale_entry(
+                            existing_localizations.get("data", []),
+                            target_locale,
+                        )
                         
-                        if locale_exists:
-                            print_error(f"  ❌ {language_name} localization already exists. Use Update Mode to modify it.")
+                        if locale_entry:
+                            localization_id = locale_entry["id"]
+                            self.asc_client.update_app_store_version_localization(
+                                localization_id=localization_id,
+                                description=translated_data.get("description"),
+                                keywords=translated_data.get("keywords"),
+                                promotional_text=translated_data.get("promotional_text"),
+                                whats_new=translated_data.get("whats_new"),
+                            )
+                            print_success(f"  ✅ {language_name} localization updated (existing locale)")
                         else:
                             print_error(f"  ❌ {language_name} locale not available. Please add it in App Store Connect first.")
                     else:
@@ -487,14 +505,16 @@ class TranslateRCLI:
                         translated_data["subtitle"] = translated_subtitle
                     
                     # Create or update app info localization
-                    if target_locale in existing_locales:
-                        # Update existing
+                    locale_entry = find_matching_locale_entry(
+                        existing_localizations.get("data", []),
+                        target_locale,
+                    )
+                    if locale_entry:
                         self.asc_client.update_app_info_localization(
-                            localization_map[target_locale],
+                            locale_entry["id"],
                             **translated_data
                         )
                     else:
-                        # Create new
                         self.asc_client.create_app_info_localization(
                             app_info_id,
                             target_locale,
@@ -1146,11 +1166,23 @@ class TranslateRCLI:
                     if "409" in error_message and "Conflict" in error_message:
                         # Check if localization actually exists or if it needs to be created in App Store Connect first
                         existing_localizations = self.asc_client.get_app_store_version_localizations(version_id)
-                        locale_exists = any(loc["attributes"]["locale"] == target_locale 
-                                          for loc in existing_localizations.get("data", []))
+                        locale_entry = find_matching_locale_entry(
+                            existing_localizations.get("data", []),
+                            target_locale,
+                        )
                         
-                        if locale_exists:
-                            print_error(f"  ❌ {language_name} localization already exists. Use Update Mode to modify it.")
+                        if locale_entry:
+                            localization_id = locale_entry["id"]
+                            self.asc_client.update_app_store_version_localization(
+                                localization_id=localization_id,
+                                description=translated_data.get("description"),
+                                keywords=translated_data.get("keywords"),
+                                promotional_text=translated_data.get("promotional_text"),
+                                whats_new=translated_data.get("whats_new"),
+                            )
+                            print_success(f"  ✅ {language_name} localization updated (existing locale)")
+                            success_count += 1
+                            successful_locales.append(target_locale)
                         else:
                             print_error(f"  ❌ {language_name} locale not available. Please add it in App Store Connect first.")
                     else:
@@ -1344,18 +1376,45 @@ class TranslateRCLI:
             if len(available_targets) > 10:
                 print(f"... and {len(available_targets) - 10} more")
             
+            print()
+            print("Translation options:")
+            print("1. App name only")
+            print("2. Subtitle only")
+            print("3. Both app name and subtitle")
+            translation_scope = input("Select option (1-3): ").strip()
+            if translation_scope not in ["1", "2", "3"]:
+                print_error("Invalid selection. Please choose 1, 2, or 3.")
+                return True
+            
+            translate_name = translation_scope in ["1", "3"]
+            translate_subtitle = translation_scope in ["2", "3"]
+            
+            if translate_name and not base_name:
+                print_warning("Base app name is empty. Skipping name translation.")
+                translate_name = False
+            if translate_subtitle and not base_subtitle:
+                print_warning("Base subtitle is empty. Skipping subtitle translation.")
+                translate_subtitle = False
+            
+            if not translate_name and not translate_subtitle:
+                print_error("No translatable fields selected.")
+                return True
+            
+            print("• Enter 'all' to select all available languages")
             target_input = input("Enter target language locales (comma-separated, e.g., 'de-DE,fr-FR,es-ES'): ").strip()
             
             if not target_input:
                 print_warning("No target languages selected")
                 return True
-            
-            target_locales = [locale.strip() for locale in target_input.split(",")]
-            invalid_locales = [loc for loc in target_locales if loc not in available_targets]
-            
-            if invalid_locales:
-                print_error(f"Invalid language codes: {', '.join(invalid_locales)}")
-                return True
+
+            if target_input.lower() == "all":
+                target_locales = available_targets
+            else:
+                target_locales = [locale.strip() for locale in target_input.split(",")]
+                invalid_locales = [loc for loc in target_locales if loc not in available_targets]
+                if invalid_locales:
+                    print_error(f"Invalid language codes: {', '.join(invalid_locales)}")
+                    return True
             
             providers = self.ai_manager.list_providers()
             if len(providers) == 1:
@@ -1394,7 +1453,7 @@ class TranslateRCLI:
                     translated_name = None
                     translated_subtitle = None
                     
-                    if base_name:
+                    if translate_name and base_name:
                         print("  • Translating app name...")
                         translated_name = provider.translate(
                             text=base_name,
@@ -1403,7 +1462,7 @@ class TranslateRCLI:
                             is_keywords=False
                         )
                     
-                    if base_subtitle:
+                    if translate_subtitle and base_subtitle:
                         print("  • Translating app subtitle...")
                         translated_subtitle = provider.translate(
                             text=base_subtitle,
@@ -1412,8 +1471,12 @@ class TranslateRCLI:
                             is_keywords=False
                         )
                     
-                    if target_locale in existing_locales:
-                        localization_id = localization_map[target_locale]
+                    locale_entry = find_matching_locale_entry(
+                        existing_localizations.get("data", []),
+                        target_locale,
+                    )
+                    if locale_entry:
+                        localization_id = locale_entry["id"]
                         self.asc_client.update_app_info_localization(
                             localization_id=localization_id,
                             name=translated_name,
@@ -1435,11 +1498,18 @@ class TranslateRCLI:
                     error_message = str(e)
                     if "409" in error_message and "Conflict" in error_message:
                         existing_app_info_localizations = self.asc_client.get_app_info_localizations(app_info_id)
-                        locale_exists = any(loc["attributes"]["locale"] == target_locale 
-                                          for loc in existing_app_info_localizations.get("data", []))
+                        locale_entry = find_matching_locale_entry(
+                            existing_app_info_localizations.get("data", []),
+                            target_locale,
+                        )
                         
-                        if locale_exists:
-                            print_error(f"  ❌ {language_name} app info localization already exists. Contact support if this persists.")
+                        if locale_entry:
+                            self.asc_client.update_app_info_localization(
+                                localization_id=locale_entry["id"],
+                                name=translated_name if translate_name else None,
+                                subtitle=translated_subtitle if translate_subtitle else None,
+                            )
+                            print_success(f"  ✅ {language_name} app info updated (existing locale)")
                         else:
                             print_error(f"  ❌ {language_name} locale not available. Please add it in App Store Connect first.")
                     else:
@@ -1451,6 +1521,106 @@ class TranslateRCLI:
             
         except Exception as e:
             print_error(f"App name & subtitle translation failed: {str(e)}")
+        
+        input("\nPress Enter to continue...")
+        return True
+
+    def revert_app_name_mode(self):
+        """Revert app name to base language across all locales."""
+        print_info("Revert App Name Mode - Set app name to base language for all locales")
+        
+        try:
+            available_apps = self.asc_client.get_apps()
+            apps = available_apps.get("data", [])
+            
+            if not apps:
+                print_error("No apps found in your App Store Connect account")
+                return True
+            
+            print()
+            print("Available Apps:")
+            for i, app in enumerate(apps, 1):
+                app_name = app.get("attributes", {}).get("name", "Unknown")
+                print(f"{i}. {app_name}")
+            
+            while True:
+                try:
+                    choice = int(input("Select app (number): ").strip())
+                    if 1 <= choice <= len(apps):
+                        selected_app = apps[choice - 1]
+                        app_id = selected_app["id"]
+                        app_name = selected_app.get("attributes", {}).get("name", "Unknown")
+                        break
+                    else:
+                        print_error("Invalid choice")
+                except ValueError:
+                    print_error("Please enter a number")
+            
+            print_info(f"Selected app: {app_name}")
+            
+            app_info_id = self.asc_client.find_primary_app_info_id(app_id)
+            if not app_info_id:
+                print_error("Could not find app info for this app")
+                return True
+            
+            existing_localizations = self.asc_client.get_app_info_localizations(app_info_id)
+            localizations = existing_localizations.get("data", [])
+            if not localizations:
+                print_error("No app info localizations found")
+                return True
+            
+            base_locale = detect_base_language(localizations)
+            if not base_locale:
+                print_error("No base language found. Please create at least one app info localization first.")
+                return True
+            
+            base_localization_id = None
+            for loc in localizations:
+                if loc.get("attributes", {}).get("locale") == base_locale:
+                    base_localization_id = loc.get("id")
+                    break
+            
+            if not base_localization_id:
+                print_error("Could not find base language localization")
+                return True
+            
+            base_data = self.asc_client.get_app_info_localization(base_localization_id)
+            base_attrs = base_data.get("data", {}).get("attributes", {})
+            base_name = base_attrs.get("name", "")
+            
+            if not base_name:
+                print_error(f"No app name found in base language ({APP_STORE_LOCALES.get(base_locale, base_locale)})")
+                return True
+            
+            print()
+            print_info(f"Base language: {APP_STORE_LOCALES.get(base_locale, base_locale)}")
+            print(f"📱 Base Name: {base_name}")
+            print_info(f"Reverting app name across {len(localizations)} locales...")
+            
+            success_count = 0
+            for i, loc in enumerate(localizations, 1):
+                locale = loc.get("attributes", {}).get("locale")
+                language_name = APP_STORE_LOCALES.get(locale, locale)
+                print()
+                print(format_progress(i, len(localizations), f"Reverting {language_name}"))
+                
+                try:
+                    self.asc_client.update_app_info_localization(
+                        localization_id=loc.get("id"),
+                        name=base_name
+                    )
+                    print_success(f"  ✅ {language_name} app name reverted")
+                    success_count += 1
+                    time.sleep(1)
+                except Exception as e:
+                    print_error(f"  ❌ Failed to revert {language_name}: {str(e)}")
+                    continue
+            
+            print()
+            print_success(f"App name revert completed! {success_count}/{len(localizations)} locales updated")
+            
+        except Exception as e:
+            print_error(f"App name revert failed: {str(e)}")
         
         input("\nPress Enter to continue...")
         return True

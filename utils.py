@@ -65,6 +65,43 @@ FIELD_LIMITS = {
     "support_url": 255
 }
 
+def normalize_locale_code(locale: Optional[str]) -> str:
+    """Normalize locale codes for comparison."""
+    if not locale:
+        return ""
+    return locale.replace("_", "-")
+
+
+def locales_equivalent(locale_a: Optional[str], locale_b: Optional[str]) -> bool:
+    """Compare locales, allowing base-language matches like 'ar' vs 'ar-SA'."""
+    if not locale_a or not locale_b:
+        return False
+
+    norm_a = normalize_locale_code(locale_a)
+    norm_b = normalize_locale_code(locale_b)
+
+    if norm_a == norm_b:
+        return True
+
+    # Avoid collapsing script variants like zh-Hans vs zh-Hant.
+    if norm_a.startswith("zh-") or norm_b.startswith("zh-"):
+        return False
+
+    # If either side is a base language, match on the base tag.
+    if "-" not in norm_a or "-" not in norm_b:
+        return norm_a.split("-", 1)[0] == norm_b.split("-", 1)[0]
+
+    return False
+
+
+def find_matching_locale_entry(localizations: List[Dict[str, Any]], target_locale: str) -> Optional[Dict[str, Any]]:
+    """Find a localization entry matching the target locale, allowing base language match."""
+    for loc in localizations:
+        locale = loc.get("attributes", {}).get("locale")
+        if locales_equivalent(locale, target_locale):
+            return loc
+    return None
+
 
 def truncate_keywords(keywords: str, max_length: int = 100) -> str:
     """
