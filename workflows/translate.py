@@ -114,11 +114,32 @@ def run(cli) -> bool:
 
     # Target languages (union across selected platforms)
     existing_by_platform: Dict[str, set] = {}
+    locales_with_empty_description = set()
     for plat, ver in selected_versions.items():
         locs = asc.get_app_store_version_localizations(ver["id"]).get("data", [])
-        existing_by_platform[plat] = {l["attributes"]["locale"] for l in locs}
-    union_existing = set().union(*existing_by_platform.values())
-    available_targets = {k: v for k, v in APP_STORE_LOCALES.items() if k not in union_existing and k != base_locale}
+        locale_codes = set()
+        for loc in locs:
+            attrs = loc.get("attributes", {})
+            locale_code = attrs.get("locale")
+            if not locale_code:
+                continue
+            locale_codes.add(locale_code)
+            if not (attrs.get("description") or "").strip():
+                locales_with_empty_description.add(locale_code)
+        existing_by_platform[plat] = locale_codes
+
+    union_existing = set()
+    for locales in existing_by_platform.values():
+        union_existing.update(locales)
+
+    def _is_locale_available(loc: str) -> bool:
+        if loc == base_locale:
+            return False
+        if loc not in union_existing:
+            return True
+        return loc in locales_with_empty_description
+
+    available_targets = {k: v for k, v in APP_STORE_LOCALES.items() if _is_locale_available(k)}
     if not available_targets:
         print_warning("All supported languages are already localized for selected platforms")
         return True
@@ -196,6 +217,10 @@ def run(cli) -> bool:
             translated["promotionalText"] = provider.translate(base_data["promotionalText"], language_name, max_length=get_field_limit("promotional_text"), seed=seed, refinement=refine_phrase)
         if base_data.get("whatsNew"):
             translated["whatsNew"] = provider.translate(base_data["whatsNew"], language_name, max_length=get_field_limit("whats_new"), seed=seed, refinement=refine_phrase)
+        if base_data.get("marketingUrl"):
+            translated["marketingUrl"] = base_data["marketingUrl"]
+        if base_data.get("supportUrl"):
+            translated["supportUrl"] = base_data["supportUrl"]
         time.sleep(1)
         return translated
 
@@ -221,6 +246,8 @@ def run(cli) -> bool:
                     keywords=translated_data.get("keywords"),
                     promotional_text=translated_data.get("promotionalText"),
                     whats_new=translated_data.get("whatsNew"),
+                    marketing_url=translated_data.get("marketingUrl"),
+                    support_url=translated_data.get("supportUrl"),
                 )
             else:
                 asc.create_app_store_version_localization(
@@ -230,6 +257,8 @@ def run(cli) -> bool:
                     keywords=translated_data.get("keywords"),
                     promotional_text=translated_data.get("promotionalText"),
                     whats_new=translated_data.get("whatsNew"),
+                    marketing_url=translated_data.get("marketingUrl"),
+                    support_url=translated_data.get("supportUrl"),
                 )
 
     # Optional: App name/subtitle

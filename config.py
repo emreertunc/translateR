@@ -30,6 +30,7 @@ DEFAULT_PROVIDERS_TEMPLATE: Dict[str, Any] = {
         "name": "OpenAI GPT",
         "class": "OpenAIProvider",
         "models": [
+            "gpt-5.2",
             "gpt-5.1",
             "gpt-5-mini",
             "gpt-5-nano",
@@ -44,7 +45,7 @@ DEFAULT_PROVIDERS_TEMPLATE: Dict[str, Any] = {
             "gpt-4",
             "gpt-3.5-turbo"
         ],
-        "default_model": "gpt-5.1"
+        "default_model": "gpt-5.2"
     },
     "google": {
         "name": "Google Gemini",

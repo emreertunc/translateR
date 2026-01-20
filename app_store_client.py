@@ -154,7 +154,9 @@ class AppStoreConnectClient:
     def create_app_store_version_localization(self, version_id: str, locale: str,
                                             description: str, keywords: str = None,
                                             promotional_text: str = None,
-                                            whats_new: str = None) -> Any:
+                                            whats_new: str = None,
+                                            marketing_url: str = None,
+                                            support_url: str = None) -> Any:
         """
         Create a new localization for an App Store version.
         
@@ -165,6 +167,8 @@ class AppStoreConnectClient:
             keywords: App keywords (max 100 chars)
             promotional_text: Promotional text (max 170 chars)
             whats_new: What's new text (max 4000 chars)
+            marketing_url: Marketing URL for the localization
+            support_url: Support URL for the localization
         """
         data = {
             "data": {
@@ -186,12 +190,16 @@ class AppStoreConnectClient:
         
         # Add optional fields
         attributes = data["data"]["attributes"]
-        if keywords:
+        if keywords is not None:
             attributes["keywords"] = keywords
-        if promotional_text:
+        if promotional_text is not None:
             attributes["promotionalText"] = promotional_text
-        if whats_new:
+        if whats_new is not None:
             attributes["whatsNew"] = whats_new
+        if marketing_url is not None:
+            attributes["marketingUrl"] = marketing_url
+        if support_url is not None:
+            attributes["supportUrl"] = support_url
         
         return self._request("POST", "appStoreVersionLocalizations", data=data)
     
@@ -199,7 +207,9 @@ class AppStoreConnectClient:
                                             description: str = None,
                                             keywords: str = None,
                                             promotional_text: str = None,
-                                            whats_new: str = None) -> Any:
+                                            whats_new: str = None,
+                                            marketing_url: str = None,
+                                            support_url: str = None) -> Any:
         """
         Update an existing App Store version localization.
         
@@ -209,6 +219,8 @@ class AppStoreConnectClient:
             keywords: App keywords (max 100 chars)
             promotional_text: Promotional text (max 170 chars)
             whats_new: What's new text (max 4000 chars)
+            marketing_url: Marketing URL for the localization
+            support_url: Support URL for the localization
         """
         # First get current localization to check for changes
         try:
@@ -232,6 +244,12 @@ class AppStoreConnectClient:
                 if len(whats_new) > 4000:
                     whats_new = whats_new[:3997] + "..."
                 attributes["whatsNew"] = whats_new
+
+            if marketing_url is not None and marketing_url != current_attrs.get("marketingUrl"):
+                attributes["marketingUrl"] = marketing_url
+
+            if support_url is not None and support_url != current_attrs.get("supportUrl"):
+                attributes["supportUrl"] = support_url
             
             # Only make request if there are changes
             if attributes:
@@ -267,6 +285,10 @@ class AppStoreConnectClient:
                 if len(whats_new) > 4000:
                     whats_new = whats_new[:3997] + "..."
                 attributes["whatsNew"] = whats_new
+            if marketing_url is not None:
+                attributes["marketingUrl"] = marketing_url
+            if support_url is not None:
+                attributes["supportUrl"] = support_url
             
             return self._request("PATCH", f"appStoreVersionLocalizations/{localization_id}", data=data)
     
