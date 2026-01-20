@@ -32,6 +32,7 @@ from workflows.export_localizations import run as export_run
 from workflows.manage_presets import run as manage_presets_run
 from workflows.iap_translate import run as iap_translate_run
 from workflows.subscription_translate import run as subscription_translate_run
+from workflows.game_center_localizations import run as game_center_localizations_run
 from workflows.app_events_translate import run as app_events_translate_run
 
 from config import ConfigManager
@@ -281,11 +282,12 @@ class TranslateRCLI:
                 {"name": "📱 App Name & Subtitle Mode - Translate app name and subtitle", "value": "7"},
                 {"name": "🛒 IAP Translations - Translate in-app purchase metadata", "value": "8"},
                 {"name": "💳 Subscription Translations - Translate subscription metadata", "value": "9"},
-                {"name": "🎉 In-App Events - Localize in-app events", "value": "10"},
-                {"name": "📄 Export Localizations - Export existing localizations to file", "value": "11"},
-                {"name": "🗂️ Manage Presets - Create and organize release note presets", "value": "12"},
-                {"name": "⚙️  Configuration - Manage API keys and settings", "value": "13"},
-                {"name": "❌ Exit", "value": "14"},
+                {"name": "🏆 Game Center - Localize achievements, leaderboards, activities, challenges", "value": "10"},
+                {"name": "🎉 In-App Events - Localize in-app events", "value": "11"},
+                {"name": "📄 Export Localizations - Export existing localizations to file", "value": "12"},
+                {"name": "🗂️ Manage Presets - Create and organize release note presets", "value": "13"},
+                {"name": "⚙️  Configuration - Manage API keys and settings", "value": "14"},
+                {"name": "❌ Exit", "value": "15"},
             ]
             choice = self.ui.select("TranslateR — Choose your workflow", choices) or ""
         else:
@@ -300,13 +302,14 @@ class TranslateRCLI:
             print("7. 📱 App Name & Subtitle Mode - Translate app name and subtitle")
             print("8. 🛒 IAP Translations - Translate in-app purchase metadata")
             print("9. 💳 Subscription Translations - Translate subscription metadata")
-            print("10. 🎉 In-App Events - Localize in-app events")
-            print("11. 📄 Export Localizations - Export existing localizations to file")
-            print("12. 🗂️ Manage Presets - Create and organize release note presets")
-            print("13. ⚙️  Configuration - Manage API keys and settings")
-            print("14. ❌ Exit")
+            print("10. 🏆 Game Center - Localize achievements, leaderboards, activities, challenges")
+            print("11. 🎉 In-App Events - Localize in-app events")
+            print("12. 📄 Export Localizations - Export existing localizations to file")
+            print("13. 🗂️ Manage Presets - Create and organize release note presets")
+            print("14. ⚙️  Configuration - Manage API keys and settings")
+            print("15. ❌ Exit")
             print()
-            choice = input("Select an option (1-14): ").strip()
+            choice = input("Select an option (1-15): ").strip()
 
         if choice == "1":
             return translate_run(self)
@@ -327,18 +330,20 @@ class TranslateRCLI:
         elif choice == "9":
             return subscription_translate_run(self)
         elif choice == "10":
-            return app_events_translate_run(self)
+            return game_center_localizations_run(self)
         elif choice == "11":
-            return export_run(self)
+            return app_events_translate_run(self)
         elif choice == "12":
-            return manage_presets_run(self)
+            return export_run(self)
         elif choice == "13":
-            return self.configuration_mode()
+            return manage_presets_run(self)
         elif choice == "14":
+            return self.configuration_mode()
+        elif choice == "15":
             print_info("Thank you for using TranslateR!")
             return False
         else:
-            print_error("Invalid choice. Please select 1-14.")
+            print_error("Invalid choice. Please select 1-15.")
             return True
     
     def translation_mode(self):
