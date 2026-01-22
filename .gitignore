@@ -1,5 +1,6 @@
 # API Keys and sensitive data
 config/api_keys.json
+config/saved_apps.json
 *.p8
 
 # AI development files (keep local only)

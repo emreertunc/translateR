@@ -73,6 +73,10 @@ class AppStoreConnectClient:
     def get_apps(self) -> Any:
         """Get list of apps."""
         return self._request("GET", "apps")
+
+    def get_app(self, app_id: str) -> Any:
+        """Get a single app by ID."""
+        return self._request("GET", f"apps/{app_id}")
     
     def get_latest_app_store_version(self, app_id: str) -> Optional[str]:
         """Get the latest App Store version ID for an app."""

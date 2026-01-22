@@ -27,6 +27,7 @@ class ConfigManager:
         self.providers_file = self.config_dir / "providers.json"
         self.api_keys_file = self.config_dir / "api_keys.json"
         self.instructions_file = self.config_dir / "instructions.txt"
+        self.saved_apps_file = self.config_dir / "saved_apps.json"
         
         self._ensure_config_files()
     
@@ -40,6 +41,9 @@ class ConfigManager:
         
         if not self.instructions_file.exists():
             self._create_default_instructions()
+        
+        if not self.saved_apps_file.exists():
+            self._create_default_saved_apps()
     
     def _create_default_providers(self):
         """Create default providers configuration."""
@@ -160,6 +164,11 @@ CRITICAL: If you cannot stay within character limits while preserving meaning, p
         
         with open(self.instructions_file, "w") as f:
             f.write(instructions)
+
+    def _create_default_saved_apps(self):
+        """Create default saved apps file."""
+        with open(self.saved_apps_file, "w") as f:
+            json.dump({}, f, indent=2)
     
     def load_providers(self) -> Dict[str, Any]:
         """Load available AI providers configuration."""
@@ -180,6 +189,24 @@ CRITICAL: If you cannot stay within character limits while preserving meaning, p
         """Load translation instructions."""
         with open(self.instructions_file, "r") as f:
             return f.read()
+
+    def load_saved_apps(self) -> Dict[str, str]:
+        """Load saved app IDs mapped to app names."""
+        try:
+            with open(self.saved_apps_file, "r") as f:
+                data = json.load(f)
+        except (OSError, json.JSONDecodeError):
+            return {}
+        if isinstance(data, dict):
+            return {str(k): str(v) for k, v in data.items()}
+        return {}
+
+    def save_saved_apps(self, saved_apps: Dict[str, str]):
+        """Save app IDs mapped to app names."""
+        tmp_path = self.saved_apps_file.with_suffix(self.saved_apps_file.suffix + ".tmp")
+        with open(tmp_path, "w") as f:
+            json.dump(saved_apps, f, indent=2)
+        os.replace(tmp_path, self.saved_apps_file)
     
     def get_app_store_config(self) -> Optional[Dict[str, str]]:
         """Get App Store Connect configuration."""

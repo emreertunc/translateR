@@ -153,6 +153,156 @@ class TranslateRCLI:
         # Reinitialize clients
         self.setup_ai_providers()
         return self.setup_app_store_client()
+
+    def _prompt_manual_app_id(self) -> Optional[str]:
+        """Prompt user to enter an App ID manually."""
+        app_id = input("Enter your App ID: ").strip()
+        if not app_id:
+            print_error("App ID is required")
+            return None
+        return app_id
+
+    def _select_saved_app_id(self, saved_apps: Dict[str, str]) -> Optional[str]:
+        """Prompt user to select an App ID from saved apps."""
+        app_ids = list(saved_apps.keys())
+        print()
+        print("Saved apps:")
+        for i, app_id in enumerate(app_ids, 1):
+            app_name = saved_apps.get(app_id, "Unknown")
+            print(f"{i}. {app_name} ({app_id})")
+        
+        while True:
+            choice = input("Select app (number): ").strip()
+            if not choice:
+                print_warning("App selection cancelled")
+                return None
+            try:
+                index = int(choice)
+                if 1 <= index <= len(app_ids):
+                    return app_ids[index - 1]
+                print_error("Invalid choice")
+            except ValueError:
+                print_error("Please enter a number")
+
+    def _get_app_id(self) -> Optional[str]:
+        """Get App ID from saved list or manual input."""
+        saved_apps = self.config.load_saved_apps()
+        if saved_apps:
+            print()
+            print("App ID options:")
+            print("1. Choose from saved apps")
+            print("2. Enter a new App ID")
+            
+            while True:
+                choice = input("Select option (1-2): ").strip()
+                if choice == "1":
+                    return self._select_saved_app_id(saved_apps)
+                if choice == "2":
+                    return self._prompt_manual_app_id()
+                print_error("Invalid choice. Please select 1 or 2.")
+        
+        return self._prompt_manual_app_id()
+
+    def _fetch_app_name(self, app_id: str) -> Optional[str]:
+        """Fetch app name from App Store Connect."""
+        try:
+            response = self.asc_client.get_app(app_id)
+            return response.get("data", {}).get("attributes", {}).get("name")
+        except Exception as e:
+            print_warning(f"Failed to fetch app name: {e}")
+            return None
+
+    def _maybe_save_app_id(self, app_id: str, app_name: Optional[str] = None):
+        """Save or update app ID/name pair after a successful operation."""
+        if not app_id:
+            return
+        
+        saved_apps = self.config.load_saved_apps()
+        existing_name = saved_apps.get(app_id)
+        if existing_name:
+            if not app_name:
+                app_name = self._fetch_app_name(app_id)
+            if app_name and app_name != existing_name:
+                saved_apps[app_id] = app_name
+                self.config.save_saved_apps(saved_apps)
+                print_info("Saved app name updated")
+            return
+        
+        confirm = input("Save this App ID for future use? (y/n): ").strip().lower()
+        if confirm not in ["y", "yes"]:
+            return
+        
+        if not app_name:
+            app_name = self._fetch_app_name(app_id)
+        
+        if not app_name:
+            app_name = input("Enter a name for this App ID (leave blank to skip): ").strip()
+        
+        if not app_name:
+            print_warning("App ID was not saved")
+            return
+        
+        saved_apps[app_id] = app_name
+        self.config.save_saved_apps(saved_apps)
+        print_success("App ID saved")
+
+    def _manage_saved_apps(self):
+        """Manage saved app IDs (delete/rename/clear)."""
+        saved_apps = self.config.load_saved_apps()
+        if not saved_apps:
+            print_info("No saved apps found")
+            return
+        
+        while True:
+            print()
+            print("Saved apps:")
+            app_ids = list(saved_apps.keys())
+            for i, app_id in enumerate(app_ids, 1):
+                app_name = saved_apps.get(app_id, "Unknown")
+                print(f"{i}. {app_name} ({app_id})")
+            
+            print()
+            print("Manage options:")
+            print("1. Delete an app")
+            print("2. Rename an app")
+            print("3. Clear all saved apps")
+            print("4. Back")
+            
+            choice = input("Select option (1-4): ").strip()
+            if choice == "1":
+                app_id = self._select_saved_app_id(saved_apps)
+                if not app_id:
+                    continue
+                confirm = input(f"Delete {saved_apps.get(app_id, 'Unknown')}? (y/n): ").strip().lower()
+                if confirm in ["y", "yes"]:
+                    saved_apps.pop(app_id, None)
+                    self.config.save_saved_apps(saved_apps)
+                    print_success("Saved app deleted")
+                    if not saved_apps:
+                        print_info("No saved apps remaining")
+                        return
+            elif choice == "2":
+                app_id = self._select_saved_app_id(saved_apps)
+                if not app_id:
+                    continue
+                new_name = input("Enter new app name: ").strip()
+                if not new_name:
+                    print_warning("Rename cancelled")
+                    continue
+                saved_apps[app_id] = new_name
+                self.config.save_saved_apps(saved_apps)
+                print_success("Saved app renamed")
+            elif choice == "3":
+                confirm = input("Clear all saved apps? (y/n): ").strip().lower()
+                if confirm in ["y", "yes"]:
+                    saved_apps = {}
+                    self.config.save_saved_apps(saved_apps)
+                    print_success("All saved apps cleared")
+                    return
+            elif choice == "4":
+                return
+            else:
+                print_error("Invalid choice. Please select 1-4.")
     
     def show_main_menu(self):
         """Display main menu and handle user choice."""
@@ -212,9 +362,8 @@ class TranslateRCLI:
         
         try:
             # Get app ID from user
-            app_id = input("Enter your App ID: ").strip()
+            app_id = self._get_app_id()
             if not app_id:
-                print_error("App ID is required")
                 return True
             
             # Get latest app store version
@@ -314,6 +463,7 @@ class TranslateRCLI:
             # Start translation process
             print()
             print_info(f"Starting translation for {len(target_locales)} languages...")
+            success_count = 0
             
             for i, target_locale in enumerate(target_locales, 1):
                 language_name = APP_STORE_LOCALES[target_locale]
@@ -376,6 +526,7 @@ class TranslateRCLI:
                     )
                     
                     print_success(f"  ✅ {language_name} translation completed")
+                    success_count += 1
                     time.sleep(2)  # Rate limiting
                     
                 except Exception as e:
@@ -402,6 +553,9 @@ class TranslateRCLI:
                 print()
                 print_info("Now translating app name & subtitle...")
                 self._translate_app_info(app_id, target_locales, provider)
+            
+            if success_count > 0:
+                self._maybe_save_app_id(app_id)
             
         except Exception as e:
             print_error(f"Translation workflow failed: {str(e)}")
@@ -523,9 +677,8 @@ class TranslateRCLI:
         
         try:
             # Get app ID from user
-            app_id = input("Enter your App ID: ").strip()
+            app_id = self._get_app_id()
             if not app_id:
-                print_error("App ID is required")
                 return True
             
             # Get latest app store version
@@ -784,6 +937,9 @@ class TranslateRCLI:
             print()
             print_success(f"Update completed! {success_count}/{len(target_locales)} languages updated successfully")
             
+            if success_count > 0:
+                self._maybe_save_app_id(app_id)
+            
         except Exception as e:
             print_error(f"Update workflow failed: {str(e)}")
         
@@ -797,9 +953,8 @@ class TranslateRCLI:
         
         try:
             # Get app ID from user
-            app_id = input("Enter your App ID: ").strip()
+            app_id = self._get_app_id()
             if not app_id:
-                print_error("App ID is required")
                 return True
             
             # Get all app store versions
@@ -910,6 +1065,9 @@ class TranslateRCLI:
             print()
             print_success(f"Copy workflow completed! {success_count}/{len(locales_to_copy)} localizations copied successfully")
             
+            if success_count > 0:
+                self._maybe_save_app_id(app_id)
+            
         except Exception as e:
             print_error(f"Copy workflow failed: {str(e)}")
         
@@ -924,9 +1082,8 @@ class TranslateRCLI:
         
         try:
             # Get app ID from user
-            app_id = input("Enter your App ID: ").strip()
+            app_id = self._get_app_id()
             if not app_id:
-                print_error("App ID is required")
                 return True
             
             # Get latest app store version
@@ -1260,6 +1417,9 @@ class TranslateRCLI:
             coverage = (final_count / total_supported) * 100
             print_info(f"Localization coverage: {coverage:.1f}%")
             
+            if success_count > 0:
+                self._maybe_save_app_id(app_id)
+            
         except Exception as e:
             print_error(f"Full setup failed: {str(e)}")
         
@@ -1462,9 +1622,8 @@ class TranslateRCLI:
         
         try:
             # Get app ID from user
-            app_id = input("Enter your App ID: ").strip()
+            app_id = self._get_app_id()
             if not app_id:
-                print_error("App ID is required")
                 return True
             
             # Validate app ID exists by trying to get its versions
@@ -1619,6 +1778,8 @@ class TranslateRCLI:
             for lang in locales_summary:
                 print(f"  • {lang}")
             
+            self._maybe_save_app_id(app_id, app_name=app_name)
+            
         except Exception as e:
             print_error(f"Export failed: {str(e)}")
         
@@ -1640,6 +1801,15 @@ class TranslateRCLI:
         
         print()
         print("App Store Connect:", "✅ Configured" if self.asc_client else "❌ Not configured")
+        
+        print()
+        saved_apps = self.config.load_saved_apps()
+        print(f"Saved apps: {len(saved_apps)}")
+        
+        print()
+        manage_saved = input("Do you want to manage saved apps? (y/n): ").strip().lower()
+        if manage_saved in ['y', 'yes']:
+            self._manage_saved_apps()
         
         print()
         reconfigure = input("Do you want to reconfigure settings? (y/n): ").strip().lower()
