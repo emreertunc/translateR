@@ -275,54 +275,40 @@ class AppStoreConnectClient:
             name: App name (max 30 chars)
             subtitle: App subtitle (max 30 chars)
         """
+        # Best-effort read of current values. If it fails, still attempt PATCH once.
+        current = None
+        current_attrs = {}
         try:
             current = self.get_app_info_localization(localization_id)
             current_attrs = current.get("data", {}).get("attributes", {})
-            
-            attributes = {}
-            
-            if name is not None and name != current_attrs.get("name"):
-                if len(name) > 30:
-                    name = name[:30]
-                attributes["name"] = name
-            
-            if subtitle is not None and subtitle != current_attrs.get("subtitle"):
-                if len(subtitle) > 30:
-                    subtitle = subtitle[:30]
-                attributes["subtitle"] = subtitle
-            
-            if attributes:
-                data = {
-                    "data": {
-                        "type": "appInfoLocalizations",
-                        "id": localization_id,
-                        "attributes": attributes
-                    }
-                }
-                return self._request("PATCH", f"appInfoLocalizations/{localization_id}", data=data)
-            else:
-                return current
-                
-        except Exception as e:
-            data = {
-                "data": {
-                    "type": "appInfoLocalizations",
-                    "id": localization_id,
-                    "attributes": {}
-                }
+        except Exception:
+            current = None
+            current_attrs = {}
+        
+        attributes = {}
+        
+        if name is not None and name != current_attrs.get("name"):
+            if len(name) > 30:
+                name = name[:30]
+            attributes["name"] = name
+        
+        if subtitle is not None and subtitle != current_attrs.get("subtitle"):
+            if len(subtitle) > 30:
+                subtitle = subtitle[:30]
+            attributes["subtitle"] = subtitle
+        
+        if not attributes:
+            return current if current is not None else {"data": {"id": localization_id, "attributes": current_attrs}}
+        
+        data = {
+            "data": {
+                "type": "appInfoLocalizations",
+                "id": localization_id,
+                "attributes": attributes
             }
-            
-            attributes = data["data"]["attributes"]
-            if name is not None:
-                if len(name) > 30:
-                    name = name[:30]
-                attributes["name"] = name
-            if subtitle is not None:
-                if len(subtitle) > 30:
-                    subtitle = subtitle[:30]
-                attributes["subtitle"] = subtitle
-            
-            return self._request("PATCH", f"appInfoLocalizations/{localization_id}", data=data)
+        }
+        
+        return self._request("PATCH", f"appInfoLocalizations/{localization_id}", data=data)
     
     def find_primary_app_info_id(self, app_id: str) -> Optional[str]:
         """

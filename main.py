@@ -213,6 +213,18 @@ class TranslateRCLI:
             print_warning(f"Failed to fetch app name: {e}")
             return None
 
+    def _get_editable_app_info(self, app_id: str) -> Optional[Dict[str, Any]]:
+        """Return app info in editable state (PREPARE_FOR_SUBMISSION) if available."""
+        app_infos = self.asc_client.get_app_infos(app_id)
+        infos = app_infos.get("data", [])
+
+        for info in infos:
+            state = info.get("attributes", {}).get("appStoreState")
+            if state == "PREPARE_FOR_SUBMISSION":
+                return info
+
+        return None
+
     def _maybe_save_app_id(self, app_id: str, app_name: Optional[str] = None):
         """Save or update app ID/name pair after a successful operation."""
         if not app_id:
@@ -1719,11 +1731,25 @@ class TranslateRCLI:
                     print_error("Please enter a number")
             
             print_info(f"Selected app: {app_name}")
-            
-            app_info_id = self.asc_client.find_primary_app_info_id(app_id)
-            if not app_info_id:
-                print_error("Could not find app info for this app")
+
+            editable_app_info = self._get_editable_app_info(app_id)
+            if not editable_app_info:
+                latest_state = "Unknown"
+                try:
+                    versions_response = self.asc_client._request("GET", f"apps/{app_id}/appStoreVersions")
+                    versions = versions_response.get("data", [])
+                    if versions:
+                        latest_state = versions[0].get("attributes", {}).get("appStoreState", "Unknown")
+                except Exception:
+                    pass
+
+                print_error("Revert App Name requires an editable App Store version.")
+                print_warning(f"Latest version state: {latest_state}")
+                print_info("Create a new version in App Store Connect (Prepare for Submission) and try again.")
+                input("\nPress Enter to continue...")
                 return True
+
+            app_info_id = editable_app_info["id"]
             
             existing_localizations = self.asc_client.get_app_info_localizations(app_info_id)
             localizations = existing_localizations.get("data", [])
@@ -1757,9 +1783,16 @@ class TranslateRCLI:
             print()
             print_info(f"Base language: {APP_STORE_LOCALES.get(base_locale, base_locale)}")
             print(f"📱 Base Name: {base_name}")
+            print_warning("This will overwrite app name in every existing app info locale.")
+            confirm = input("Proceed with revert? (y/n): ").strip().lower()
+            if confirm not in ["y", "yes"]:
+                print_info("App name revert cancelled")
+                input("\nPress Enter to continue...")
+                return True
             print_info(f"Reverting app name across {len(localizations)} locales...")
             
             success_count = 0
+            failed_locales = []
             for i, loc in enumerate(localizations, 1):
                 locale = loc.get("attributes", {}).get("locale")
                 language_name = APP_STORE_LOCALES.get(locale, locale)
@@ -1771,15 +1804,36 @@ class TranslateRCLI:
                         localization_id=loc.get("id"),
                         name=base_name
                     )
-                    print_success(f"  ✅ {language_name} app name reverted")
+                    print_success(f"  {language_name} app name reverted")
                     success_count += 1
                     time.sleep(1)
                 except Exception as e:
-                    print_error(f"  ❌ Failed to revert {language_name}: {str(e)}")
+                    error_text = str(e)
+                    # Read-after-error: if the target already matches base name, treat as success.
+                    try:
+                        latest = self.asc_client.get_app_info_localization(loc.get("id"))
+                        latest_name = latest.get("data", {}).get("attributes", {}).get("name")
+                        if latest_name == base_name:
+                            print_success(f"  {language_name} already matches base name")
+                            success_count += 1
+                            continue
+                    except Exception:
+                        pass
+
+                    if "409" in error_text and "Conflict" in error_text:
+                        print_error(
+                            f"  Failed to revert {language_name}: 409 conflict "
+                            "(most likely name availability or locale metadata lock)"
+                        )
+                    else:
+                        print_error(f"  Failed to revert {language_name}: {error_text}")
+                    failed_locales.append(language_name)
                     continue
             
             print()
             print_success(f"App name revert completed! {success_count}/{len(localizations)} locales updated")
+            if failed_locales:
+                print_warning(f"Failed locales: {', '.join(failed_locales)}")
             
         except Exception as e:
             print_error(f"App name revert failed: {str(e)}")
