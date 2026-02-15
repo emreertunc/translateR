@@ -13,6 +13,7 @@ Repository: https://github.com/emreertunc/translater
 import sys
 import os
 import time
+import subprocess
 from typing import Optional, Dict, Any, List
 
 from config import ConfigManager
@@ -29,6 +30,7 @@ from utils import (
 
 class TranslateRCLI:
     """Main CLI interface for TranslateR application."""
+    DEFAULT_REPO_URL = "https://github.com/emreertunc/translateR"
     
     def __init__(self):
         self.config = ConfigManager()
@@ -225,6 +227,261 @@ class TranslateRCLI:
 
         return None
 
+    def _normalize_repo_url(self, remote_url: str) -> str:
+        """Normalize git remote URL to browser-friendly URL when possible."""
+        if not remote_url:
+            return self.DEFAULT_REPO_URL
+        
+        normalized = remote_url.strip()
+        
+        if normalized.startswith("git@github.com:"):
+            normalized = "https://github.com/" + normalized.split("git@github.com:", 1)[1]
+        elif normalized.startswith("ssh://git@github.com/"):
+            normalized = "https://github.com/" + normalized.split("ssh://git@github.com/", 1)[1]
+        
+        if normalized.endswith(".git"):
+            normalized = normalized[:-4]
+        
+        return normalized
+
+    def _get_repo_url(self) -> str:
+        """Get repository URL from origin remote if available."""
+        try:
+            result = subprocess.run(
+                ["git", "remote", "get-url", "origin"],
+                capture_output=True,
+                text=True,
+                check=True
+            )
+            return self._normalize_repo_url(result.stdout.strip())
+        except Exception:
+            return self.DEFAULT_REPO_URL
+
+    def check_for_updates_mode(self):
+        """Check GitHub for updates and optionally fast-forward local clone."""
+        print_info("Check for Updates - Pull latest changes from GitHub")
+        repo_url = self._get_repo_url()
+        
+        def run_git(args: List[str], fail_message: str, allow_fail: bool = False) -> Optional[str]:
+            try:
+                result = subprocess.run(
+                    ["git"] + args,
+                    capture_output=True,
+                    text=True
+                )
+            except FileNotFoundError:
+                print_error("Git is not installed. Automatic update is unavailable.")
+                print_info(f"Manual update: {repo_url}")
+                return None
+            
+            if result.returncode != 0:
+                if allow_fail:
+                    return None
+                error_output = (result.stderr or result.stdout or "").strip()
+                print_error(fail_message)
+                if error_output:
+                    print_warning(error_output)
+                print_info(f"Manual update: {repo_url}")
+                return None
+            
+            return result.stdout.strip()
+        
+        try:
+            inside_worktree = run_git(
+                ["rev-parse", "--is-inside-work-tree"],
+                "Could not detect Git repository.",
+                allow_fail=True
+            )
+            if inside_worktree != "true":
+                print_warning("This installation is not a Git clone. It is likely a ZIP download.")
+                print_info(f"Manual update: {repo_url}")
+                input("\nPress Enter to continue...")
+                return True
+            
+            current_branch = run_git(
+                ["branch", "--show-current"],
+                "Could not detect current branch."
+            )
+            if not current_branch:
+                input("\nPress Enter to continue...")
+                return True
+            
+            status_output = run_git(
+                ["status", "--porcelain"],
+                "Could not read Git status."
+            )
+            if status_output is None:
+                input("\nPress Enter to continue...")
+                return True
+            if status_output:
+                print_warning("Local changes detected. Automatic update skipped to avoid overwrite.")
+                print_info("Commit, stash, or discard changes, then run update again.")
+                print_info(f"Manual update: {repo_url}")
+                input("\nPress Enter to continue...")
+                return True
+            
+            print_info("Checking remote updates...")
+            fetch_output = run_git(
+                ["fetch", "origin"],
+                "Failed to fetch updates from origin."
+            )
+            if fetch_output is None:
+                input("\nPress Enter to continue...")
+                return True
+            
+            upstream_ref = run_git(
+                ["rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}"],
+                "No upstream branch is configured for this branch.",
+                allow_fail=True
+            )
+            if not upstream_ref:
+                fallback_upstream = f"origin/{current_branch}"
+                fallback_exists = run_git(
+                    ["rev-parse", "--verify", fallback_upstream],
+                    "Could not verify remote branch.",
+                    allow_fail=True
+                )
+                if not fallback_exists:
+                    print_warning("No upstream branch found for automatic update.")
+                    print_info(f"Manual update: {repo_url}")
+                    input("\nPress Enter to continue...")
+                    return True
+                upstream_ref = fallback_upstream
+            
+            rev_counts = run_git(
+                ["rev-list", "--left-right", "--count", f"HEAD...{upstream_ref}"],
+                "Could not compare local branch with upstream."
+            )
+            if not rev_counts:
+                input("\nPress Enter to continue...")
+                return True
+            
+            parts = rev_counts.split()
+            if len(parts) != 2:
+                print_error("Unexpected Git comparison output.")
+                print_info(f"Manual update: {repo_url}")
+                input("\nPress Enter to continue...")
+                return True
+            
+            ahead_count, behind_count = map(int, parts)
+            
+            if ahead_count > 0 and behind_count > 0:
+                print_warning("Your branch has diverged from upstream. Automatic update is skipped.")
+                print_info("Please resolve divergence manually with rebase or merge.")
+                print_info(f"Manual update: {repo_url}")
+                input("\nPress Enter to continue...")
+                return True
+            
+            if ahead_count > 0 and behind_count == 0:
+                print_info("Local branch is ahead of upstream. No update needed.")
+                input("\nPress Enter to continue...")
+                return True
+            
+            if behind_count == 0:
+                print_success("You are already up to date.")
+                input("\nPress Enter to continue...")
+                return True
+            
+            print_warning(f"Update available: {behind_count} commit(s) behind {upstream_ref}.")
+            confirm = input("Apply fast-forward update now? (y/n): ").strip().lower()
+            if confirm not in ["y", "yes"]:
+                print_info("Update cancelled.")
+                input("\nPress Enter to continue...")
+                return True
+            
+            before_hash = run_git(["rev-parse", "--short", "HEAD"], "Could not read current commit.")
+            if before_hash is None:
+                input("\nPress Enter to continue...")
+                return True
+            
+            pull_result = subprocess.run(
+                ["git", "pull", "--ff-only"],
+                capture_output=True,
+                text=True
+            )
+            if pull_result.returncode != 0:
+                error_output = (pull_result.stderr or pull_result.stdout or "").strip()
+                print_error("Automatic update failed.")
+                if error_output:
+                    print_warning(error_output)
+                print_info(f"Manual update: {repo_url}")
+                input("\nPress Enter to continue...")
+                return True
+            
+            after_hash = run_git(["rev-parse", "--short", "HEAD"], "Could not read updated commit.")
+            if after_hash is None:
+                input("\nPress Enter to continue...")
+                return True
+            
+            print_success(f"Update completed: {before_hash} -> {after_hash}")
+            
+        except Exception as e:
+            print_error(f"Update check failed: {str(e)}")
+            print_info(f"Manual update: {repo_url}")
+        
+        input("\nPress Enter to continue...")
+        return True
+
+    def _check_for_updates_on_startup(self):
+        """Silently check for updates and show a non-blocking hint."""
+        def run_git_quiet(args: List[str], timeout: int = 8) -> Optional[str]:
+            try:
+                result = subprocess.run(
+                    ["git"] + args,
+                    capture_output=True,
+                    text=True,
+                    timeout=timeout
+                )
+            except Exception:
+                return None
+            
+            if result.returncode != 0:
+                return None
+            
+            return result.stdout.strip()
+        
+        try:
+            inside_worktree = run_git_quiet(["rev-parse", "--is-inside-work-tree"])
+            if inside_worktree != "true":
+                return
+            
+            # Do not check remote if user has local edits.
+            status_output = run_git_quiet(["status", "--porcelain"])
+            if status_output is None or status_output:
+                return
+            
+            current_branch = run_git_quiet(["branch", "--show-current"])
+            if not current_branch:
+                return
+            
+            if run_git_quiet(["fetch", "origin"], timeout=15) is None:
+                return
+            
+            upstream_ref = run_git_quiet(["rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}"])
+            if not upstream_ref:
+                fallback_upstream = f"origin/{current_branch}"
+                if run_git_quiet(["rev-parse", "--verify", fallback_upstream]) is None:
+                    return
+                upstream_ref = fallback_upstream
+            
+            rev_counts = run_git_quiet(["rev-list", "--left-right", "--count", f"HEAD...{upstream_ref}"])
+            if not rev_counts:
+                return
+            
+            parts = rev_counts.split()
+            if len(parts) != 2:
+                return
+            
+            ahead_count, behind_count = map(int, parts)
+            
+            if behind_count > 0 and ahead_count == 0:
+                print_warning(f"Update available: {behind_count} commit(s) behind {upstream_ref}.")
+                print_info("Use menu option 9 to update.")
+            elif ahead_count > 0 and behind_count > 0:
+                print_warning("Local branch diverged from upstream. Use menu option 9 for guidance.")
+        except Exception:
+            return
+
     def _maybe_save_app_id(self, app_id: str, app_name: Optional[str] = None):
         """Save or update app ID/name pair after a successful operation."""
         if not app_id:
@@ -329,10 +586,11 @@ class TranslateRCLI:
         print("6. ♻️  Revert App Name - Set app name to base language for all locales")
         print("7. 📄 Export Localizations - Export existing localizations to file")
         print("8. ⚙️  Configuration - Manage API keys and settings")
-        print("9. ❌ Exit")
+        print("9. 🔄 Check for Updates - Pull latest changes from GitHub")
+        print("10. ❌ Exit")
         print()
         
-        choice = input("Select an option (1-9): ").strip()
+        choice = input("Select an option (1-10): ").strip()
         
         if choice == "1":
             return self.translation_mode()
@@ -351,10 +609,12 @@ class TranslateRCLI:
         elif choice == "8":
             return self.configuration_mode()
         elif choice == "9":
+            return self.check_for_updates_mode()
+        elif choice == "10":
             print_info("Thank you for using TranslateR!")
             return False
         else:
-            print_error("Invalid choice. Please select 1-9.")
+            print_error("Invalid choice. Please select 1-10.")
             return True
     
     def translation_mode(self):
@@ -2080,6 +2340,9 @@ class TranslateRCLI:
             print_error("No AI providers configured. Please run setup.")
             if not self.setup_wizard():
                 return
+        
+        # Non-blocking startup check. Detailed flow stays in menu option 9.
+        self._check_for_updates_on_startup()
         
         # Main application loop
         while True:
