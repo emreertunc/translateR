@@ -557,12 +557,13 @@ class TranslateRCLI:
                                 whats_new=translated_data.get("whats_new"),
                             )
                             print_success(f"  ✅ {language_name} localization updated (existing locale)")
+                            success_count += 1
                         else:
                             print_error(f"  ❌ {language_name} locale not available. Please add it in App Store Connect first.")
                     else:
                         print_error(f"  ❌ Failed to translate to {language_name}: {error_message}")
                     continue
-            
+
             print()
             print_success("Metadata translation completed!")
             
@@ -1670,12 +1671,13 @@ class TranslateRCLI:
                                 subtitle=translated_subtitle if translate_subtitle else None,
                             )
                             print_success(f"  ✅ {language_name} app info updated (existing locale)")
+                            success_count += 1
                         else:
                             print_error(f"  ❌ {language_name} locale not available. Please add it in App Store Connect first.")
                     else:
                         print_error(f"  ❌ Failed to translate {language_name}: {error_message}")
                     continue
-            
+
             print()
             print_success(f"App name & subtitle translation completed! {success_count}/{len(target_locales)} languages translated successfully")
             
