@@ -18,7 +18,9 @@ class AIProvider(ABC):
     @abstractmethod
     def translate(self, text: str, target_language: str, 
                   max_length: Optional[int] = None, 
-                  is_keywords: bool = False) -> str:
+                  is_keywords: bool = False,
+                  seed: Optional[int] = None,
+                  refinement: Optional[str] = None) -> str:
         """
         Translate text to target language.
         
@@ -27,6 +29,8 @@ class AIProvider(ABC):
             target_language: Target language name
             max_length: Maximum character length for translation
             is_keywords: Whether the text is keywords (affects formatting)
+            seed: Optional deterministic seed (provider support varies)
+            refinement: Optional extra translation guidance
             
         Returns:
             Translated text
@@ -48,8 +52,12 @@ class AnthropicProvider(AIProvider):
     
     def translate(self, text: str, target_language: str, 
                   max_length: Optional[int] = None, 
-                  is_keywords: bool = False) -> str:
+                  is_keywords: bool = False,
+                  seed: Optional[int] = None,
+                  refinement: Optional[str] = None) -> str:
         """Translate using Anthropic Claude."""
+        _ = seed
+
         # Log the request
         log_ai_request("Anthropic Claude", self.model, text, target_language, max_length, is_keywords)
         
@@ -70,6 +78,9 @@ class AnthropicProvider(AIProvider):
             
             if is_keywords:
                 system_message += " For keywords, provide a comma-separated list and keep it concise."
+
+            if refinement:
+                system_message += f" Additional guidance: {refinement}"
             
             if max_length:
                 system_message += (
@@ -134,8 +145,12 @@ class OpenAIProvider(AIProvider):
     
     def translate(self, text: str, target_language: str, 
                   max_length: Optional[int] = None, 
-                  is_keywords: bool = False) -> str:
+                  is_keywords: bool = False,
+                  seed: Optional[int] = None,
+                  refinement: Optional[str] = None) -> str:
         """Translate using OpenAI GPT."""
+        _ = seed
+
         # Log the request
         log_ai_request("OpenAI GPT", self.model, text, target_language, max_length, is_keywords)
         
@@ -155,6 +170,9 @@ class OpenAIProvider(AIProvider):
             
             if is_keywords:
                 system_message += " For keywords, provide a comma-separated list and keep it concise."
+
+            if refinement:
+                system_message += f" Additional guidance: {refinement}"
             
             if max_length:
                 system_message += (
@@ -220,8 +238,12 @@ class GoogleGeminiProvider(AIProvider):
     
     def translate(self, text: str, target_language: str, 
                   max_length: Optional[int] = None, 
-                  is_keywords: bool = False) -> str:
+                  is_keywords: bool = False,
+                  seed: Optional[int] = None,
+                  refinement: Optional[str] = None) -> str:
         """Translate using Google Gemini."""
+        _ = seed
+
         # Log the request
         log_ai_request("Google Gemini", self.model, text, target_language, max_length, is_keywords)
         
@@ -240,6 +262,9 @@ class GoogleGeminiProvider(AIProvider):
             
             if is_keywords:
                 prompt += " For keywords, provide a comma-separated list and keep it concise."
+
+            if refinement:
+                prompt += f" Additional guidance: {refinement}"
             
             if max_length:
                 prompt += (

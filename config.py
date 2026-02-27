@@ -7,7 +7,7 @@ provider settings, and user preferences.
 
 import json
 import os
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
 from pathlib import Path
 
 
@@ -48,6 +48,8 @@ class ConfigManager:
     def _create_default_providers(self):
         """Create default providers configuration."""
         default_providers = {
+            "default_provider": "",
+            "prompt_refinement": "",
             "anthropic": {
                 "name": "Anthropic Claude",
                 "class": "AnthropicProvider",
@@ -174,6 +176,11 @@ CRITICAL: If you cannot stay within character limits while preserving meaning, p
         """Load available AI providers configuration."""
         with open(self.providers_file, "r") as f:
             return json.load(f)
+
+    def save_providers(self, providers: Dict[str, Any]) -> None:
+        """Persist providers configuration (models, defaults)."""
+        with open(self.providers_file, "w") as f:
+            json.dump(providers, f, indent=2)
     
     def load_api_keys(self) -> Dict[str, Any]:
         """Load API keys configuration."""
@@ -221,3 +228,61 @@ CRITICAL: If you cannot stay within character limits while preserving meaning, p
         """Get API key for specific AI provider."""
         api_keys = self.load_api_keys()
         return api_keys.get("ai_providers", {}).get(provider)
+
+    def get_default_ai_provider(self) -> Optional[str]:
+        """Return configured default provider name, if any."""
+        cfg = self.load_providers()
+        default_provider = cfg.get("default_provider")
+        return default_provider or None
+
+    def set_default_ai_provider(self, provider_name: Optional[str]) -> None:
+        """Set default provider (None or empty string clears it)."""
+        cfg = self.load_providers()
+        cfg["default_provider"] = provider_name or ""
+        self.save_providers(cfg)
+
+    def list_provider_models(self, provider_name: str) -> List[str]:
+        """Return model list configured for a provider."""
+        cfg = self.load_providers()
+        provider = cfg.get(provider_name)
+        if isinstance(provider, dict):
+            models = provider.get("models", [])
+            if isinstance(models, list):
+                return [str(model) for model in models]
+        return []
+
+    def get_default_model(self, provider_name: str) -> Optional[str]:
+        """Return default model for provider if configured."""
+        cfg = self.load_providers()
+        provider = cfg.get(provider_name)
+        if isinstance(provider, dict):
+            model = provider.get("default_model")
+            return str(model) if model else None
+        return None
+
+    def set_default_model(self, provider_name: str, model: str) -> bool:
+        """Set default model for provider, returns True on success."""
+        cfg = self.load_providers()
+        provider = cfg.get(provider_name)
+        if not isinstance(provider, dict):
+            return False
+
+        models = provider.get("models", [])
+        if isinstance(models, list) and models and model not in models:
+            return False
+
+        provider["default_model"] = model
+        cfg[provider_name] = provider
+        self.save_providers(cfg)
+        return True
+
+    def get_prompt_refinement(self) -> str:
+        """Return configured global prompt refinement phrase, or empty string."""
+        cfg = self.load_providers()
+        return str(cfg.get("prompt_refinement", "") or "")
+
+    def set_prompt_refinement(self, phrase: str) -> None:
+        """Persist global prompt refinement phrase."""
+        cfg = self.load_providers()
+        cfg["prompt_refinement"] = phrase or ""
+        self.save_providers(cfg)

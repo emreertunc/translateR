@@ -19,6 +19,7 @@ from typing import Optional, Dict, Any, List
 from config import ConfigManager
 from app_store_client import AppStoreConnectClient
 from ai_providers import AIProviderManager, AnthropicProvider, OpenAIProvider, GoogleGeminiProvider
+from ui import UI
 from utils import (
     APP_STORE_LOCALES, FIELD_LIMITS, 
     detect_base_language, truncate_keywords, get_field_limit,
@@ -36,6 +37,7 @@ class TranslateRCLI:
         self.config = ConfigManager()
         self.asc_client = None
         self.ai_manager = AIProviderManager()
+        self.ui = UI()
         self.setup_ai_providers()
     
     def setup_ai_providers(self):

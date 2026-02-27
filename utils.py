@@ -5,8 +5,11 @@ Common helper functions used throughout the application.
 """
 
 import os
+import sys
+import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
-from typing import Dict, List, Optional, Any
+from typing import Dict, List, Optional, Any, Callable, Tuple
 
 
 # App Store supported locales with their language names
@@ -225,6 +228,100 @@ def format_progress(current: int, total: int, operation: str = "") -> str:
     bar = '█' * filled_length + '░' * (bar_length - filled_length)
     
     return f"[{bar}] {percentage}% ({current}/{total}) {operation}"
+
+
+def provider_model_info(provider: Any, fallback_name: Optional[str] = None) -> Tuple[str, Optional[str]]:
+    """Return display-friendly provider name and model."""
+    try:
+        provider_name = provider.get_name()  # type: ignore[attr-defined]
+    except Exception:
+        provider_name = fallback_name or str(provider)
+    model = getattr(provider, "model", None)
+    return provider_name, model
+
+
+def parallel_map_locales(
+    target_locales: List[str],
+    task_fn: Callable[[str], Any],
+    progress_action: str = "Processed",
+    concurrency_env_var: str = "TRANSLATER_CONCURRENCY",
+    default_workers: Optional[int] = None,
+    pacing_seconds: float = 0.0,
+) -> Tuple[Dict[str, Any], Dict[str, str]]:
+    """Run locale tasks in parallel with progress and error capture."""
+    total = len(target_locales)
+    results: Dict[str, Any] = {}
+    errors: Dict[str, str] = {}
+    if total == 0:
+        return results, errors
+
+    def run_task(locale: str) -> Tuple[str, Any, Optional[str]]:
+        try:
+            value = task_fn(locale)
+            return locale, value, None
+        except Exception as error:
+            return locale, None, str(error)
+        finally:
+            if pacing_seconds > 0:
+                try:
+                    time.sleep(pacing_seconds)
+                except Exception:
+                    pass
+
+    cpu_default = os.cpu_count() or 4
+    fallback_workers = default_workers if isinstance(default_workers, int) and default_workers > 0 else cpu_default
+    try:
+        env_value = os.environ.get(concurrency_env_var, str(fallback_workers)) or str(fallback_workers)
+        max_workers = max(1, min(total, int(env_value)))
+    except Exception:
+        max_workers = min(total, fallback_workers)
+
+    completed = 0
+    last_len = 0
+    try:
+        initial = format_progress(0, total, f"{progress_action}...")
+        sys.stdout.write("\r" + initial)
+        sys.stdout.flush()
+        last_len = len(initial)
+    except Exception:
+        pass
+
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        future_map = {executor.submit(run_task, locale): locale for locale in target_locales}
+        for future in as_completed(future_map):
+            locale = future_map[future]
+            language = APP_STORE_LOCALES.get(locale, locale)
+
+            try:
+                _, value, error_text = future.result()
+            except Exception as error:
+                value = None
+                error_text = str(error)
+
+            if error_text:
+                errors[locale] = error_text
+                print_error(f"  ❌ {progress_action} {language} failed: {error_text}")
+            else:
+                results[locale] = value
+
+            completed += 1
+            try:
+                line = format_progress(completed, total, f"{progress_action} {language}")
+                pad = max(0, last_len - len(line))
+                sys.stdout.write("\r" + line + (" " * pad))
+                sys.stdout.flush()
+                last_len = len(line)
+            except Exception:
+                print(format_progress(completed, total, f"{progress_action} {language}"))
+
+    try:
+        sys.stdout.write("\r" + (" " * last_len) + "\r")
+        sys.stdout.flush()
+    except Exception:
+        pass
+    print()
+
+    return results, errors
 
 
 def print_success(message: str):
