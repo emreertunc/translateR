@@ -11,10 +11,13 @@ import requests
 from typing import Dict, Any, Optional, List
 import random
 
+from utils import get_field_limit
+
 
 class AppStoreConnectClient:
     """Client for interacting with App Store Connect API."""
     
+    API_ROOT = "https://api.appstoreconnect.apple.com"
     BASE_URL = "https://api.appstoreconnect.apple.com/v1"
     
     def __init__(self, key_id: str, issuer_id: str, private_key: str):
@@ -53,7 +56,12 @@ class AppStoreConnectClient:
             "Authorization": f"Bearer {self._generate_token()}",
             "Content-Type": "application/json"
         }
-        url = f"{self.BASE_URL}/{endpoint}"
+        if endpoint.startswith("http://") or endpoint.startswith("https://"):
+            url = endpoint
+        elif endpoint.startswith("v1/") or endpoint.startswith("v2/"):
+            url = f"{self.API_ROOT}/{endpoint}"
+        else:
+            url = f"{self.BASE_URL}/{endpoint}"
         
         for attempt in range(max_retries + 1):
             try:
@@ -225,8 +233,16 @@ class AppStoreConnectClient:
         """Get a specific app info localization by ID."""
         return self._request("GET", f"appInfoLocalizations/{localization_id}")
     
-    def create_app_info_localization(self, app_info_id: str, locale: str,
-                                   name: str = None, subtitle: str = None) -> Any:
+    def create_app_info_localization(
+        self,
+        app_info_id: str,
+        locale: str,
+        name: str = None,
+        subtitle: str = None,
+        privacy_policy_url: str = None,
+        marketing_url: str = None,
+        support_url: str = None,
+    ) -> Any:
         """
         Create a new app info localization.
         
@@ -262,11 +278,27 @@ class AppStoreConnectClient:
             if len(subtitle) > 30:
                 subtitle = subtitle[:30]
             attributes["subtitle"] = subtitle
+        if privacy_policy_url:
+            limit = get_field_limit("privacy_policy_url") or 255
+            attributes["privacyPolicyUrl"] = privacy_policy_url[:limit]
+        if marketing_url:
+            limit = get_field_limit("marketing_url") or 255
+            attributes["marketingUrl"] = marketing_url[:limit]
+        if support_url:
+            limit = get_field_limit("support_url") or 255
+            attributes["supportUrl"] = support_url[:limit]
         
         return self._request("POST", "appInfoLocalizations", data=data)
     
-    def update_app_info_localization(self, localization_id: str,
-                                   name: str = None, subtitle: str = None) -> Any:
+    def update_app_info_localization(
+        self,
+        localization_id: str,
+        name: str = None,
+        subtitle: str = None,
+        privacy_policy_url: str = None,
+        marketing_url: str = None,
+        support_url: str = None,
+    ) -> Any:
         """
         Update an existing app info localization.
         
@@ -296,6 +328,18 @@ class AppStoreConnectClient:
             if len(subtitle) > 30:
                 subtitle = subtitle[:30]
             attributes["subtitle"] = subtitle
+
+        if privacy_policy_url is not None and privacy_policy_url != current_attrs.get("privacyPolicyUrl"):
+            limit = get_field_limit("privacy_policy_url") or len(privacy_policy_url)
+            attributes["privacyPolicyUrl"] = privacy_policy_url[:limit]
+
+        if marketing_url is not None and marketing_url != current_attrs.get("marketingUrl"):
+            limit = get_field_limit("marketing_url") or len(marketing_url)
+            attributes["marketingUrl"] = marketing_url[:limit]
+
+        if support_url is not None and support_url != current_attrs.get("supportUrl"):
+            limit = get_field_limit("support_url") or len(support_url)
+            attributes["supportUrl"] = support_url[:limit]
         
         if not attributes:
             return current if current is not None else {"data": {"id": localization_id, "attributes": current_attrs}}
@@ -331,6 +375,764 @@ class AppStoreConnectClient:
             
         except Exception:
             return None
+
+    # ----------------------
+    # In-App Purchase helpers
+    # ----------------------
+
+    def get_in_app_purchases(self, app_id: str, limit: int = 200) -> Any:
+        """List in-app purchases for an app."""
+        params = {"limit": max(1, min(limit, 200))}
+        return self._request("GET", f"apps/{app_id}/inAppPurchasesV2", params=params)
+
+    def get_in_app_purchase_localizations(self, iap_id: str) -> Any:
+        """Get localizations for a specific in-app purchase."""
+        return self._request("GET", f"v2/inAppPurchases/{iap_id}/inAppPurchaseLocalizations")
+
+    def get_in_app_purchase_localization(self, localization_id: str) -> Any:
+        """Get a single in-app purchase localization."""
+        return self._request("GET", f"inAppPurchaseLocalizations/{localization_id}")
+
+    def create_in_app_purchase_localization(
+        self,
+        iap_id: str,
+        locale: str,
+        name: str,
+        description: Optional[str] = None,
+    ) -> Any:
+        """Create a localization for an in-app purchase."""
+        name_limit = get_field_limit("iap_name") or 30
+        desc_limit = get_field_limit("iap_description") or 45
+        safe_name = (name or "")[:name_limit]
+        safe_description = (description or "")[:desc_limit] if description else None
+
+        data = {
+            "data": {
+                "type": "inAppPurchaseLocalizations",
+                "attributes": {
+                    "locale": locale,
+                    "name": safe_name,
+                },
+                "relationships": {
+                    "inAppPurchaseV2": {
+                        "data": {
+                            "type": "inAppPurchases",
+                            "id": iap_id,
+                        }
+                    }
+                }
+            }
+        }
+        if safe_description is not None:
+            data["data"]["attributes"]["description"] = safe_description
+
+        try:
+            return self._request("POST", "inAppPurchaseLocalizations", data=data)
+        except requests.exceptions.HTTPError as error:
+            status_code = getattr(error.response, "status_code", None)
+            if status_code == 409:
+                try:
+                    localizations = self.get_in_app_purchase_localizations(iap_id)
+                    locale_map = {
+                        loc.get("attributes", {}).get("locale"): loc.get("id")
+                        for loc in localizations.get("data", [])
+                        if loc.get("id")
+                    }
+                    localization_id = locale_map.get(locale)
+                    if localization_id:
+                        return self.update_in_app_purchase_localization(
+                            localization_id,
+                            name,
+                            description,
+                        )
+                except Exception:
+                    pass
+            raise
+
+    def update_in_app_purchase_localization(
+        self,
+        localization_id: str,
+        name: Optional[str] = None,
+        description: Optional[str] = None,
+    ) -> Any:
+        """Update an existing in-app purchase localization."""
+        name_limit = get_field_limit("iap_name") or 30
+        desc_limit = get_field_limit("iap_description") or 45
+
+        attrs: Dict[str, Any] = {}
+        if name is not None:
+            attrs["name"] = name[:name_limit]
+        if description is not None:
+            attrs["description"] = description[:desc_limit]
+
+        if not attrs:
+            return self.get_in_app_purchase_localization(localization_id)
+
+        data = {
+            "data": {
+                "type": "inAppPurchaseLocalizations",
+                "id": localization_id,
+                "attributes": attrs,
+            }
+        }
+        return self._request("PATCH", f"inAppPurchaseLocalizations/{localization_id}", data=data)
+
+    # ----------------------
+    # Subscription helpers
+    # ----------------------
+
+    def get_subscription_groups(self, app_id: str, limit: int = 200) -> Any:
+        """List subscription groups for an app."""
+        params = {"limit": max(1, min(limit, 200))}
+        return self._request("GET", f"apps/{app_id}/subscriptionGroups", params=params)
+
+    def get_subscriptions_for_group(self, group_id: str, limit: int = 200) -> Any:
+        """List subscriptions for a subscription group."""
+        params = {"limit": max(1, min(limit, 200))}
+        return self._request("GET", f"subscriptionGroups/{group_id}/subscriptions", params=params)
+
+    def get_subscription_localizations(self, subscription_id: str) -> Any:
+        """Get localizations for a specific subscription."""
+        return self._request("GET", f"subscriptions/{subscription_id}/subscriptionLocalizations")
+
+    def create_subscription_localization(
+        self,
+        subscription_id: str,
+        locale: str,
+        name: str,
+        description: Optional[str] = None,
+    ) -> Any:
+        """Create a subscription localization."""
+        name_limit = get_field_limit("subscription_name") or 60
+        desc_limit = get_field_limit("subscription_description") or 200
+        safe_name = (name or "")[:name_limit]
+        safe_description = (description or "")[:desc_limit] if description else None
+
+        data = {
+            "data": {
+                "type": "subscriptionLocalizations",
+                "attributes": {
+                    "locale": locale,
+                    "name": safe_name,
+                },
+                "relationships": {
+                    "subscription": {
+                        "data": {
+                            "type": "subscriptions",
+                            "id": subscription_id,
+                        }
+                    }
+                }
+            }
+        }
+        if safe_description is not None:
+            data["data"]["attributes"]["description"] = safe_description
+
+        try:
+            return self._request("POST", "subscriptionLocalizations", data=data, max_retries=0)
+        except requests.exceptions.HTTPError as error:
+            status_code = getattr(error.response, "status_code", None)
+            if status_code == 409:
+                try:
+                    localizations = self.get_subscription_localizations(subscription_id)
+                    locale_map = {
+                        loc.get("attributes", {}).get("locale"): loc.get("id")
+                        for loc in localizations.get("data", [])
+                        if loc.get("id")
+                    }
+                    localization_id = locale_map.get(locale)
+                    if localization_id:
+                        return self.update_subscription_localization(
+                            localization_id,
+                            safe_name,
+                            safe_description,
+                        )
+                except Exception:
+                    pass
+            raise
+
+    def update_subscription_localization(
+        self,
+        localization_id: str,
+        name: Optional[str] = None,
+        description: Optional[str] = None,
+    ) -> Any:
+        """Update a subscription localization."""
+        attrs: Dict[str, Any] = {}
+        if name is not None:
+            limit = get_field_limit("subscription_name") or len(name)
+            attrs["name"] = name[:limit]
+        if description is not None:
+            limit = get_field_limit("subscription_description") or len(description)
+            attrs["description"] = description[:limit]
+
+        if not attrs:
+            return self._request("GET", f"subscriptionLocalizations/{localization_id}")
+
+        data = {
+            "data": {
+                "type": "subscriptionLocalizations",
+                "id": localization_id,
+                "attributes": attrs,
+            }
+        }
+        return self._request("PATCH", f"subscriptionLocalizations/{localization_id}", data=data, max_retries=0)
+
+    def get_subscription_group_localizations(self, group_id: str) -> Any:
+        """Get localizations for a subscription group."""
+        return self._request("GET", f"subscriptionGroups/{group_id}/subscriptionGroupLocalizations")
+
+    def create_subscription_group_localization(
+        self,
+        group_id: str,
+        locale: str,
+        name: str,
+        custom_app_name: Optional[str] = None,
+    ) -> Any:
+        """Create a subscription group localization."""
+        name_limit = get_field_limit("subscription_group_name") or 60
+        custom_limit = get_field_limit("subscription_group_custom_app_name") or 30
+        safe_name = (name or "")[:name_limit]
+        safe_custom = (custom_app_name or "")[:custom_limit] if custom_app_name else None
+
+        data = {
+            "data": {
+                "type": "subscriptionGroupLocalizations",
+                "attributes": {
+                    "locale": locale,
+                    "name": safe_name,
+                },
+                "relationships": {
+                    "subscriptionGroup": {
+                        "data": {
+                            "type": "subscriptionGroups",
+                            "id": group_id,
+                        }
+                    }
+                }
+            }
+        }
+        if safe_custom is not None:
+            data["data"]["attributes"]["customAppName"] = safe_custom
+
+        try:
+            return self._request("POST", "subscriptionGroupLocalizations", data=data, max_retries=0)
+        except requests.exceptions.HTTPError as error:
+            status_code = getattr(error.response, "status_code", None)
+            if status_code == 409:
+                try:
+                    localizations = self.get_subscription_group_localizations(group_id)
+                    locale_map = {
+                        loc.get("attributes", {}).get("locale"): loc.get("id")
+                        for loc in localizations.get("data", [])
+                        if loc.get("id")
+                    }
+                    localization_id = locale_map.get(locale)
+                    if localization_id:
+                        return self.update_subscription_group_localization(
+                            localization_id,
+                            safe_name,
+                            safe_custom,
+                        )
+                except Exception:
+                    pass
+            raise
+
+    def update_subscription_group_localization(
+        self,
+        localization_id: str,
+        name: Optional[str] = None,
+        custom_app_name: Optional[str] = None,
+    ) -> Any:
+        """Update a subscription group localization."""
+        attrs: Dict[str, Any] = {}
+        if name is not None:
+            limit = get_field_limit("subscription_group_name") or len(name)
+            attrs["name"] = name[:limit]
+        if custom_app_name is not None:
+            limit = get_field_limit("subscription_group_custom_app_name") or len(custom_app_name)
+            attrs["customAppName"] = custom_app_name[:limit]
+
+        if not attrs:
+            return self._request("GET", f"subscriptionGroupLocalizations/{localization_id}")
+
+        data = {
+            "data": {
+                "type": "subscriptionGroupLocalizations",
+                "id": localization_id,
+                "attributes": attrs,
+            }
+        }
+        return self._request("PATCH", f"subscriptionGroupLocalizations/{localization_id}", data=data, max_retries=0)
+
+    # ----------------------
+    # In-App Events helpers
+    # ----------------------
+
+    def get_app_events(self, app_id: str, limit: int = 200) -> Any:
+        """List in-app events for an app."""
+        params = {"limit": max(1, min(limit, 200))}
+        return self._request("GET", f"apps/{app_id}/appEvents", params=params)
+
+    def get_app_event_localizations(self, app_event_id: str, limit: int = 200) -> Any:
+        """Get localizations for an in-app event."""
+        params = {
+            "limit": max(1, min(limit, 200)),
+            "fields[appEventLocalizations]": "locale,name,shortDescription,longDescription",
+        }
+        return self._request("GET", f"appEvents/{app_event_id}/localizations", params=params)
+
+    def get_app_event_localization(self, localization_id: str) -> Any:
+        """Get a single app event localization."""
+        return self._request("GET", f"appEventLocalizations/{localization_id}")
+
+    def create_app_event_localization(
+        self,
+        app_event_id: str,
+        locale: str,
+        name: Optional[str] = None,
+        short_description: Optional[str] = None,
+        long_description: Optional[str] = None,
+    ) -> Any:
+        """Create an app event localization."""
+        name_limit = get_field_limit("app_event_name") or 30
+        short_limit = get_field_limit("app_event_short_description") or 50
+        long_limit = get_field_limit("app_event_long_description") or 120
+
+        attrs: Dict[str, Any] = {"locale": locale}
+        safe_name = (name or "").strip()
+        safe_short = (short_description or "").strip()
+        safe_long = (long_description or "").strip()
+        if safe_name:
+            attrs["name"] = safe_name[:name_limit]
+        if safe_short:
+            attrs["shortDescription"] = safe_short[:short_limit]
+        if safe_long and len(safe_long) >= 2:
+            attrs["longDescription"] = safe_long[:long_limit]
+
+        data = {
+            "data": {
+                "type": "appEventLocalizations",
+                "attributes": attrs,
+                "relationships": {
+                    "appEvent": {
+                        "data": {
+                            "type": "appEvents",
+                            "id": app_event_id,
+                        }
+                    }
+                },
+            }
+        }
+
+        try:
+            return self._request("POST", "appEventLocalizations", data=data, max_retries=0)
+        except requests.exceptions.HTTPError as error:
+            status_code = getattr(error.response, "status_code", None)
+            if status_code == 409:
+                try:
+                    localizations = self.get_app_event_localizations(app_event_id)
+                    locale_map = {
+                        loc.get("attributes", {}).get("locale"): loc.get("id")
+                        for loc in localizations.get("data", [])
+                        if loc.get("id")
+                    }
+                    localization_id = locale_map.get(locale)
+                    if localization_id:
+                        return self.update_app_event_localization(
+                            localization_id=localization_id,
+                            name=name,
+                            short_description=short_description,
+                            long_description=long_description,
+                        )
+                except Exception:
+                    pass
+            raise
+
+    def update_app_event_localization(
+        self,
+        localization_id: str,
+        name: Optional[str] = None,
+        short_description: Optional[str] = None,
+        long_description: Optional[str] = None,
+    ) -> Any:
+        """Update an app event localization."""
+        attrs: Dict[str, Any] = {}
+        if name is not None:
+            safe_name = (name or "").strip()
+            if safe_name:
+                limit = get_field_limit("app_event_name") or len(safe_name)
+                attrs["name"] = safe_name[:limit]
+        if short_description is not None:
+            safe_short = (short_description or "").strip()
+            if safe_short:
+                limit = get_field_limit("app_event_short_description") or len(safe_short)
+                attrs["shortDescription"] = safe_short[:limit]
+        if long_description is not None:
+            safe_long = (long_description or "").strip()
+            if safe_long and len(safe_long) >= 2:
+                limit = get_field_limit("app_event_long_description") or len(safe_long)
+                attrs["longDescription"] = safe_long[:limit]
+
+        if not attrs:
+            return self.get_app_event_localization(localization_id)
+
+        data = {
+            "data": {
+                "type": "appEventLocalizations",
+                "id": localization_id,
+                "attributes": attrs,
+            }
+        }
+        return self._request("PATCH", f"appEventLocalizations/{localization_id}", data=data, max_retries=0)
+
+    # ----------------------
+    # Game Center helpers
+    # ----------------------
+
+    def get_game_center_detail(self, app_id: str) -> Any:
+        """Get Game Center detail for an app."""
+        return self._request("GET", f"v1/apps/{app_id}/gameCenterDetail")
+
+    def get_game_center_group(self, detail_id: str) -> Any:
+        """Get Game Center group for a Game Center detail."""
+        return self._request("GET", f"v1/gameCenterDetails/{detail_id}/gameCenterGroup")
+
+    def get_game_center_achievements(self, detail_id: str, limit: int = 200) -> Any:
+        """List Game Center achievements for a Game Center detail."""
+        params = {"limit": max(1, min(limit, 200))}
+        return self._request("GET", f"v1/gameCenterDetails/{detail_id}/gameCenterAchievements", params=params)
+
+    def get_game_center_leaderboards(self, detail_id: str, limit: int = 200) -> Any:
+        """List Game Center leaderboards for a Game Center detail."""
+        params = {"limit": max(1, min(limit, 200))}
+        return self._request("GET", f"v1/gameCenterDetails/{detail_id}/gameCenterLeaderboards", params=params)
+
+    def get_game_center_activities(self, detail_id: str, limit: int = 200) -> Any:
+        """List Game Center activities for a Game Center detail."""
+        params = {"limit": max(1, min(limit, 200))}
+        return self._request("GET", f"v1/gameCenterDetails/{detail_id}/gameCenterActivities", params=params)
+
+    def get_game_center_challenges(self, detail_id: str, limit: int = 200) -> Any:
+        """List Game Center challenges for a Game Center detail."""
+        params = {"limit": max(1, min(limit, 200))}
+        return self._request("GET", f"v1/gameCenterDetails/{detail_id}/gameCenterChallenges", params=params)
+
+    def get_game_center_group_achievements(self, group_id: str, limit: int = 200) -> Any:
+        """List Game Center achievements for a Game Center group."""
+        params = {"limit": max(1, min(limit, 200))}
+        return self._request("GET", f"v1/gameCenterGroups/{group_id}/gameCenterAchievements", params=params)
+
+    def get_game_center_group_leaderboards(self, group_id: str, limit: int = 200) -> Any:
+        """List Game Center leaderboards for a Game Center group."""
+        params = {"limit": max(1, min(limit, 200))}
+        return self._request("GET", f"v1/gameCenterGroups/{group_id}/gameCenterLeaderboards", params=params)
+
+    def get_game_center_group_activities(self, group_id: str, limit: int = 200) -> Any:
+        """List Game Center activities for a Game Center group."""
+        params = {"limit": max(1, min(limit, 200))}
+        return self._request("GET", f"v1/gameCenterGroups/{group_id}/gameCenterActivities", params=params)
+
+    def get_game_center_group_challenges(self, group_id: str, limit: int = 200) -> Any:
+        """List Game Center challenges for a Game Center group."""
+        params = {"limit": max(1, min(limit, 200))}
+        return self._request("GET", f"v1/gameCenterGroups/{group_id}/gameCenterChallenges", params=params)
+
+    def get_game_center_achievement_localizations(self, achievement_id: str, limit: int = 200) -> Any:
+        """Get localizations for a specific Game Center achievement."""
+        params = {"limit": max(1, min(limit, 200))}
+        return self._request("GET", f"v1/gameCenterAchievements/{achievement_id}/localizations", params=params)
+
+    def get_game_center_leaderboard_localizations(self, leaderboard_id: str, limit: int = 200) -> Any:
+        """Get localizations for a specific Game Center leaderboard."""
+        params = {"limit": max(1, min(limit, 200))}
+        return self._request("GET", f"v1/gameCenterLeaderboards/{leaderboard_id}/localizations", params=params)
+
+    def get_game_center_activity_versions(self, activity_id: str, limit: int = 200) -> Any:
+        """List versions for a Game Center activity."""
+        params = {"limit": max(1, min(limit, 200))}
+        return self._request("GET", f"v1/gameCenterActivities/{activity_id}/versions", params=params)
+
+    def get_game_center_challenge_versions(self, challenge_id: str, limit: int = 200) -> Any:
+        """List versions for a Game Center challenge."""
+        params = {"limit": max(1, min(limit, 200))}
+        return self._request("GET", f"v1/gameCenterChallenges/{challenge_id}/versions", params=params)
+
+    def get_game_center_activity_version_localizations(self, version_id: str, limit: int = 200) -> Any:
+        """Get localizations for a Game Center activity version."""
+        params = {"limit": max(1, min(limit, 200))}
+        return self._request("GET", f"v1/gameCenterActivityVersions/{version_id}/localizations", params=params)
+
+    def get_game_center_challenge_version_localizations(self, version_id: str, limit: int = 200) -> Any:
+        """Get localizations for a Game Center challenge version."""
+        params = {"limit": max(1, min(limit, 200))}
+        return self._request("GET", f"v1/gameCenterChallengeVersions/{version_id}/localizations", params=params)
+
+    def create_game_center_achievement_localization(
+        self,
+        achievement_id: str,
+        locale: str,
+        name: str,
+        before_earned_description: str,
+        after_earned_description: str,
+    ) -> Any:
+        """Create a localization for a Game Center achievement."""
+        name_limit = get_field_limit("game_center_achievement_name") or 30
+        before_limit = get_field_limit("game_center_achievement_before_description") or 200
+        after_limit = get_field_limit("game_center_achievement_after_description") or 200
+
+        data = {
+            "data": {
+                "type": "gameCenterAchievementLocalizations",
+                "attributes": {
+                    "locale": locale,
+                    "name": (name or "").strip()[:name_limit],
+                    "beforeEarnedDescription": (before_earned_description or "").strip()[:before_limit],
+                    "afterEarnedDescription": (after_earned_description or "").strip()[:after_limit],
+                },
+                "relationships": {
+                    "gameCenterAchievement": {
+                        "data": {
+                            "type": "gameCenterAchievements",
+                            "id": achievement_id,
+                        }
+                    }
+                },
+            }
+        }
+        return self._request("POST", "v1/gameCenterAchievementLocalizations", data=data, max_retries=0)
+
+    def update_game_center_achievement_localization(
+        self,
+        localization_id: str,
+        name: Optional[str] = None,
+        before_earned_description: Optional[str] = None,
+        after_earned_description: Optional[str] = None,
+    ) -> Any:
+        """Update an existing Game Center achievement localization."""
+        attrs: Dict[str, Any] = {}
+        if name is not None:
+            limit = get_field_limit("game_center_achievement_name") or len(name)
+            attrs["name"] = (name or "").strip()[:limit]
+        if before_earned_description is not None:
+            limit = get_field_limit("game_center_achievement_before_description") or len(before_earned_description)
+            attrs["beforeEarnedDescription"] = (before_earned_description or "").strip()[:limit]
+        if after_earned_description is not None:
+            limit = get_field_limit("game_center_achievement_after_description") or len(after_earned_description)
+            attrs["afterEarnedDescription"] = (after_earned_description or "").strip()[:limit]
+
+        if not attrs:
+            return self._request("GET", f"v1/gameCenterAchievementLocalizations/{localization_id}")
+
+        data = {
+            "data": {
+                "type": "gameCenterAchievementLocalizations",
+                "id": localization_id,
+                "attributes": attrs,
+            }
+        }
+        return self._request("PATCH", f"v1/gameCenterAchievementLocalizations/{localization_id}", data=data, max_retries=0)
+
+    def create_game_center_leaderboard_localization(
+        self,
+        leaderboard_id: str,
+        locale: str,
+        name: str,
+        description: Optional[str] = None,
+        formatter_suffix: Optional[str] = None,
+        formatter_suffix_singular: Optional[str] = None,
+        formatter_override: Optional[str] = None,
+    ) -> Any:
+        """Create a localization for a Game Center leaderboard."""
+        name_limit = get_field_limit("game_center_leaderboard_name") or 30
+        desc_limit = get_field_limit("game_center_leaderboard_description") or 200
+
+        attrs: Dict[str, Any] = {
+            "locale": locale,
+            "name": (name or "").strip()[:name_limit],
+        }
+        if description is not None:
+            attrs["description"] = (description or "").strip()[:desc_limit]
+        if formatter_suffix is not None:
+            attrs["formatterSuffix"] = formatter_suffix
+        if formatter_suffix_singular is not None:
+            attrs["formatterSuffixSingular"] = formatter_suffix_singular
+        if formatter_override is not None:
+            attrs["formatterOverride"] = formatter_override
+
+        data = {
+            "data": {
+                "type": "gameCenterLeaderboardLocalizations",
+                "attributes": attrs,
+                "relationships": {
+                    "gameCenterLeaderboard": {
+                        "data": {
+                            "type": "gameCenterLeaderboards",
+                            "id": leaderboard_id,
+                        }
+                    }
+                },
+            }
+        }
+        return self._request("POST", "v1/gameCenterLeaderboardLocalizations", data=data, max_retries=0)
+
+    def update_game_center_leaderboard_localization(
+        self,
+        localization_id: str,
+        name: Optional[str] = None,
+        description: Optional[str] = None,
+        formatter_suffix: Optional[str] = None,
+        formatter_suffix_singular: Optional[str] = None,
+        formatter_override: Optional[str] = None,
+    ) -> Any:
+        """Update an existing Game Center leaderboard localization."""
+        attrs: Dict[str, Any] = {}
+        if name is not None:
+            limit = get_field_limit("game_center_leaderboard_name") or len(name)
+            attrs["name"] = (name or "").strip()[:limit]
+        if description is not None:
+            limit = get_field_limit("game_center_leaderboard_description") or len(description)
+            attrs["description"] = (description or "").strip()[:limit]
+        if formatter_suffix is not None:
+            attrs["formatterSuffix"] = formatter_suffix
+        if formatter_suffix_singular is not None:
+            attrs["formatterSuffixSingular"] = formatter_suffix_singular
+        if formatter_override is not None:
+            attrs["formatterOverride"] = formatter_override
+
+        if not attrs:
+            return self._request("GET", f"v1/gameCenterLeaderboardLocalizations/{localization_id}")
+
+        data = {
+            "data": {
+                "type": "gameCenterLeaderboardLocalizations",
+                "id": localization_id,
+                "attributes": attrs,
+            }
+        }
+        return self._request("PATCH", f"v1/gameCenterLeaderboardLocalizations/{localization_id}", data=data, max_retries=0)
+
+    def create_game_center_activity_localization(
+        self,
+        version_id: str,
+        locale: str,
+        name: str,
+        description: Optional[str] = None,
+    ) -> Any:
+        """Create a localization for a Game Center activity version."""
+        name_limit = get_field_limit("game_center_activity_name") or 30
+        desc_limit = get_field_limit("game_center_activity_description") or 200
+
+        attrs: Dict[str, Any] = {
+            "locale": locale,
+            "name": (name or "").strip()[:name_limit],
+        }
+        if description is not None:
+            attrs["description"] = (description or "").strip()[:desc_limit]
+
+        data = {
+            "data": {
+                "type": "gameCenterActivityLocalizations",
+                "attributes": attrs,
+                "relationships": {
+                    "version": {
+                        "data": {
+                            "type": "gameCenterActivityVersions",
+                            "id": version_id,
+                        }
+                    }
+                },
+            }
+        }
+        return self._request("POST", "v1/gameCenterActivityLocalizations", data=data, max_retries=0)
+
+    def update_game_center_activity_localization(
+        self,
+        localization_id: str,
+        name: Optional[str] = None,
+        description: Optional[str] = None,
+    ) -> Any:
+        """Update an existing Game Center activity localization."""
+        attrs: Dict[str, Any] = {}
+        if name is not None:
+            limit = get_field_limit("game_center_activity_name") or len(name)
+            attrs["name"] = (name or "").strip()[:limit]
+        if description is not None:
+            limit = get_field_limit("game_center_activity_description") or len(description)
+            attrs["description"] = (description or "").strip()[:limit]
+
+        if not attrs:
+            return self._request("GET", f"v1/gameCenterActivityLocalizations/{localization_id}")
+
+        data = {
+            "data": {
+                "type": "gameCenterActivityLocalizations",
+                "id": localization_id,
+                "attributes": attrs,
+            }
+        }
+        return self._request("PATCH", f"v1/gameCenterActivityLocalizations/{localization_id}", data=data, max_retries=0)
+
+    def create_game_center_challenge_localization(
+        self,
+        version_id: str,
+        locale: str,
+        name: str,
+        description: Optional[str] = None,
+    ) -> Any:
+        """Create a localization for a Game Center challenge version."""
+        name_limit = get_field_limit("game_center_challenge_name") or 30
+        desc_limit = get_field_limit("game_center_challenge_description") or 200
+
+        attrs: Dict[str, Any] = {
+            "locale": locale,
+            "name": (name or "").strip()[:name_limit],
+        }
+        if description is not None:
+            attrs["description"] = (description or "").strip()[:desc_limit]
+
+        data = {
+            "data": {
+                "type": "gameCenterChallengeLocalizations",
+                "attributes": attrs,
+                "relationships": {
+                    "version": {
+                        "data": {
+                            "type": "gameCenterChallengeVersions",
+                            "id": version_id,
+                        }
+                    }
+                },
+            }
+        }
+        return self._request("POST", "v1/gameCenterChallengeLocalizations", data=data, max_retries=0)
+
+    def update_game_center_challenge_localization(
+        self,
+        localization_id: str,
+        name: Optional[str] = None,
+        description: Optional[str] = None,
+    ) -> Any:
+        """Update an existing Game Center challenge localization."""
+        attrs: Dict[str, Any] = {}
+        if name is not None:
+            limit = get_field_limit("game_center_challenge_name") or len(name)
+            attrs["name"] = (name or "").strip()[:limit]
+        if description is not None:
+            limit = get_field_limit("game_center_challenge_description") or len(description)
+            attrs["description"] = (description or "").strip()[:limit]
+
+        if not attrs:
+            return self._request("GET", f"v1/gameCenterChallengeLocalizations/{localization_id}")
+
+        data = {
+            "data": {
+                "type": "gameCenterChallengeLocalizations",
+                "id": localization_id,
+                "attributes": attrs,
+            }
+        }
+        return self._request("PATCH", f"v1/gameCenterChallengeLocalizations/{localization_id}", data=data, max_retries=0)
     
     def copy_localization_from_previous_version(self, source_version_id: str, 
                                                target_version_id: str, 

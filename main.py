@@ -20,6 +20,10 @@ from config import ConfigManager
 from app_store_client import AppStoreConnectClient
 from ai_providers import AIProviderManager, AnthropicProvider, OpenAIProvider, GoogleGeminiProvider
 from ui import UI
+from workflows.iap_translate import run as iap_translate_run
+from workflows.subscription_translate import run as subscription_translate_run
+from workflows.game_center_localizations import run as game_center_localizations_run
+from workflows.app_events_translate import run as app_events_translate_run
 from utils import (
     APP_STORE_LOCALES, FIELD_LIMITS, 
     detect_base_language, truncate_keywords, get_field_limit,
@@ -589,10 +593,14 @@ class TranslateRCLI:
         print("7. 📄 Export Localizations - Export existing localizations to file")
         print("8. ⚙️  Configuration - Manage API keys and settings")
         print("9. 🔄 Check for Updates - Pull latest changes from GitHub")
-        print("10. ❌ Exit")
+        print("10. 🛒 IAP Translations - Translate in-app purchase metadata")
+        print("11. 💳 Subscription Translations - Translate subscription metadata")
+        print("12. 🏆 Game Center - Translate achievements, leaderboards, activities, and challenges")
+        print("13. 🎉 In-App Events - Translate event localizations")
+        print("14. ❌ Exit")
         print()
         
-        choice = input("Select an option (1-10): ").strip()
+        choice = input("Select an option (1-14): ").strip()
         
         if choice == "1":
             return self.translation_mode()
@@ -613,11 +621,35 @@ class TranslateRCLI:
         elif choice == "9":
             return self.check_for_updates_mode()
         elif choice == "10":
+            return self.iap_translate_mode()
+        elif choice == "11":
+            return self.subscription_translate_mode()
+        elif choice == "12":
+            return self.game_center_localizations_mode()
+        elif choice == "13":
+            return self.app_events_translate_mode()
+        elif choice == "14":
             print_info("Thank you for using TranslateR!")
             return False
         else:
-            print_error("Invalid choice. Please select 1-10.")
+            print_error("Invalid choice. Please select 1-14.")
             return True
+
+    def iap_translate_mode(self):
+        """IAP translation mode wrapper."""
+        return iap_translate_run(self)
+
+    def subscription_translate_mode(self):
+        """Subscription translation mode wrapper."""
+        return subscription_translate_run(self)
+
+    def game_center_localizations_mode(self):
+        """Game Center localization mode wrapper."""
+        return game_center_localizations_run(self)
+
+    def app_events_translate_mode(self):
+        """In-app events translation mode wrapper."""
+        return app_events_translate_run(self)
     
     def translation_mode(self):
         """Handle translation workflow."""
@@ -887,6 +919,9 @@ class TranslateRCLI:
             
             base_name = base_attrs.get("name", "")
             base_subtitle = base_attrs.get("subtitle", "")
+            base_privacy_policy_url = base_attrs.get("privacyPolicyUrl", "")
+            base_marketing_url = base_attrs.get("marketingUrl", "")
+            base_support_url = base_attrs.get("supportUrl", "")
             
             if not base_name and not base_subtitle:
                 print_warning("No name or subtitle found in base language. Skipping app name & subtitle.")
@@ -898,6 +933,8 @@ class TranslateRCLI:
                 print(f"📱 Name: {base_name}")
             if base_subtitle:
                 print(f"📝 Subtitle: {base_subtitle}")
+            if base_marketing_url or base_support_url or base_privacy_policy_url:
+                print("🔗 App info URLs (marketing/support/privacy policy) will be copied from base locale")
             
             success_count = 0
             
@@ -932,6 +969,14 @@ class TranslateRCLI:
                         if len(translated_subtitle) > 30:
                             translated_subtitle = translated_subtitle[:30]
                         translated_data["subtitle"] = translated_subtitle
+
+                    # Copy URLs from base locale without translation
+                    if base_privacy_policy_url:
+                        translated_data["privacy_policy_url"] = base_privacy_policy_url
+                    if base_marketing_url:
+                        translated_data["marketing_url"] = base_marketing_url
+                    if base_support_url:
+                        translated_data["support_url"] = base_support_url
                     
                     # Create or update app info localization
                     locale_entry = find_matching_locale_entry(

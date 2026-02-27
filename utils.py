@@ -65,7 +65,25 @@ FIELD_LIMITS = {
     "whats_new": 4000,
     "privacy_policy_url": 255,
     "marketing_url": 255,
-    "support_url": 255
+    "support_url": 255,
+    "iap_name": 30,
+    "iap_description": 45,
+    "subscription_name": 60,
+    "subscription_description": 200,
+    "subscription_group_name": 60,
+    "subscription_group_custom_app_name": 30,
+    "app_event_name": 30,
+    "app_event_short_description": 50,
+    "app_event_long_description": 120,
+    "game_center_achievement_name": 30,
+    "game_center_achievement_before_description": 200,
+    "game_center_achievement_after_description": 200,
+    "game_center_leaderboard_name": 30,
+    "game_center_leaderboard_description": 200,
+    "game_center_activity_name": 30,
+    "game_center_activity_description": 200,
+    "game_center_challenge_name": 30,
+    "game_center_challenge_description": 200
 }
 
 def normalize_locale_code(locale: Optional[str]) -> str:
