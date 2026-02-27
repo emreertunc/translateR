@@ -52,21 +52,21 @@ class TranslateRCLI:
             # Setup Anthropic
             anthropic_key = self.config.get_ai_provider_key("anthropic")
             if anthropic_key:
-                default_model = providers_config.get("anthropic", {}).get("default_model", "claude-sonnet-4-20250514")
+                default_model = providers_config.get("anthropic", {}).get("default_model", "claude-sonnet-4-6")
                 anthropic = AnthropicProvider(anthropic_key, default_model)
                 self.ai_manager.add_provider("anthropic", anthropic)
             
             # Setup OpenAI
             openai_key = self.config.get_ai_provider_key("openai")
             if openai_key:
-                default_model = providers_config.get("openai", {}).get("default_model", "gpt-4.1")
+                default_model = providers_config.get("openai", {}).get("default_model", "gpt-5.2")
                 openai = OpenAIProvider(openai_key, default_model)
                 self.ai_manager.add_provider("openai", openai)
             
             # Setup Google Gemini
             google_key = self.config.get_ai_provider_key("google")
             if google_key:
-                default_model = providers_config.get("google", {}).get("default_model", "gemini-2.5-flash")
+                default_model = providers_config.get("google", {}).get("default_model", "gemini-3-flash-preview")
                 google = GoogleGeminiProvider(google_key, default_model)
                 self.ai_manager.add_provider("google", google)
                 
@@ -522,6 +522,77 @@ class TranslateRCLI:
         self.config.save_saved_apps(saved_apps)
         print_success("App ID saved")
 
+    def _select_ai_provider(self, exclude_providers: Optional[List[str]] = None) -> Optional[str]:
+        """Prompt user to pick an AI provider, optionally excluding some providers."""
+        excluded = set(exclude_providers or [])
+        providers = [p for p in self.ai_manager.list_providers() if p not in excluded]
+
+        if not providers:
+            print_error("No available AI providers to select.")
+            return None
+
+        if len(providers) == 1:
+            selected_provider = providers[0]
+            print_info(f"Using AI provider: {selected_provider}")
+            return selected_provider
+
+        print()
+        print("Available AI providers:")
+        for i, provider in enumerate(providers, 1):
+            print(f"{i}. {provider}")
+
+        while True:
+            raw = input("Select AI provider (number): ").strip()
+            try:
+                choice = int(raw)
+                if 1 <= choice <= len(providers):
+                    return providers[choice - 1]
+                print_error("Invalid choice")
+            except ValueError:
+                print_error("Please enter a number")
+
+    def _is_provider_error(self, error_message: str) -> bool:
+        """Detect whether an error likely came from AI provider APIs."""
+        message = (error_message or "").lower()
+        markers = [
+            "translation failed",
+            "anthropic",
+            "openai",
+            "google gemini",
+            "api key",
+            "credit balance",
+            "quota",
+            "rate limit",
+            "model unavailable",
+            "unexpected responses api format",
+            "unexpected chat completions api format",
+        ]
+        return any(marker in message for marker in markers)
+
+    def _prompt_retry_with_another_provider(
+        self,
+        current_provider: str,
+        error_message: str,
+        context_label: str,
+    ) -> Optional[str]:
+        """Ask user if failed task should be retried with a different provider."""
+        if len(self.ai_manager.list_providers()) < 2:
+            return None
+        if not self._is_provider_error(error_message):
+            return None
+
+        print()
+        print_warning(f"{current_provider} failed while processing {context_label}.")
+        retry = input("Try again with another AI provider? (y/n): ").strip().lower()
+        if retry not in ["y", "yes", "e", "evet"]:
+            return None
+
+        selected = self._select_ai_provider(exclude_providers=[current_provider])
+        if not selected:
+            return None
+
+        return selected
+
     def _manage_saved_apps(self):
         """Manage saved app IDs (delete/rename/clear)."""
         saved_apps = self.config.load_saved_apps()
@@ -751,28 +822,14 @@ class TranslateRCLI:
                     return True
             
             # Select AI provider
-            providers = self.ai_manager.list_providers()
-            if len(providers) == 1:
-                selected_provider = providers[0]
-                print_info(f"Using AI provider: {selected_provider}")
-            else:
-                print()
-                print("Available AI providers:")
-                for i, provider in enumerate(providers, 1):
-                    print(f"{i}. {provider}")
-                
-                while True:
-                    try:
-                        choice = int(input("Select AI provider (number): ").strip())
-                        if 1 <= choice <= len(providers):
-                            selected_provider = providers[choice - 1]
-                            break
-                        else:
-                            print_error("Invalid choice")
-                    except ValueError:
-                        print_error("Please enter a number")
-            
+            selected_provider = self._select_ai_provider()
+            if not selected_provider:
+                return True
+
             provider = self.ai_manager.get_provider(selected_provider)
+            if not provider:
+                print_error(f"Provider not found: {selected_provider}")
+                return True
             
             # Start translation process
             print()
@@ -784,91 +841,98 @@ class TranslateRCLI:
                 print()
                 print(format_progress(i, len(target_locales), f"Translating to {language_name}"))
                 
-                try:
-                    # Translate fields
+                while True:
                     translated_data = {}
-                    
-                    # Description
-                    if base_data.get("description"):
-                        print(f"  • Translating description...")
-                        translated_data["description"] = provider.translate(
-                            base_data["description"], 
-                            language_name,
-                            max_length=get_field_limit("description")
-                        )
-                    
-                    # Keywords
-                    if base_data.get("keywords"):
-                        print(f"  • Translating keywords...")
-                        translated_keywords = provider.translate(
-                            base_data["keywords"], 
-                            language_name,
-                            max_length=get_field_limit("keywords"),
-                            is_keywords=True
-                        )
-                        # Clean and format keywords properly
-                        translated_keywords = translated_keywords.strip().rstrip('.')
-                        translated_keywords = truncate_keywords(translated_keywords, 100)
-                        translated_data["keywords"] = translated_keywords
-                    
-                    # Promotional text
-                    if base_data.get("promotionalText"):
-                        print(f"  • Translating promotional text...")
-                        translated_data["promotional_text"] = provider.translate(
-                            base_data["promotionalText"], 
-                            language_name,
-                            max_length=get_field_limit("promotional_text")
-                        )
-                    
-                    # What's new
-                    if base_data.get("whatsNew"):
-                        print(f"  • Translating what's new...")
-                        translated_data["whats_new"] = provider.translate(
-                            base_data["whatsNew"], 
-                            language_name,
-                            max_length=get_field_limit("whats_new")
-                        )
-                    
-                    # Create new localization
-                    self.asc_client.create_app_store_version_localization(
-                        version_id=version_id,
-                        locale=target_locale,
-                        description=translated_data.get("description", ""),
-                        keywords=translated_data.get("keywords"),
-                        promotional_text=translated_data.get("promotional_text"),
-                        whats_new=translated_data.get("whats_new")
-                    )
-                    
-                    print_success(f"  ✅ {language_name} translation completed")
-                    success_count += 1
-                    time.sleep(2)  # Rate limiting
-                    
-                except Exception as e:
-                    error_message = str(e)
-                    if "409" in error_message and "Conflict" in error_message:
-                        # Check if localization actually exists or if it needs to be created in App Store Connect first
-                        existing_localizations = self.asc_client.get_app_store_version_localizations(version_id)
-                        locale_entry = find_matching_locale_entry(
-                            existing_localizations.get("data", []),
-                            target_locale,
-                        )
-                        
-                        if locale_entry:
-                            localization_id = locale_entry["id"]
-                            self.asc_client.update_app_store_version_localization(
-                                localization_id=localization_id,
-                                description=translated_data.get("description"),
-                                keywords=translated_data.get("keywords"),
-                                promotional_text=translated_data.get("promotional_text"),
-                                whats_new=translated_data.get("whats_new"),
+                    try:
+                        # Translate fields
+                        if base_data.get("description"):
+                            print(f"  • Translating description...")
+                            translated_data["description"] = provider.translate(
+                                base_data["description"],
+                                language_name,
+                                max_length=get_field_limit("description")
                             )
-                            print_success(f"  ✅ {language_name} localization updated (existing locale)")
-                            success_count += 1
-                        else:
-                            print_error(f"  ❌ {language_name} locale not available. Please add it in App Store Connect first.")
-                    else:
+
+                        if base_data.get("keywords"):
+                            print(f"  • Translating keywords...")
+                            translated_keywords = provider.translate(
+                                base_data["keywords"],
+                                language_name,
+                                max_length=get_field_limit("keywords"),
+                                is_keywords=True
+                            )
+                            translated_keywords = translated_keywords.strip().rstrip('.')
+                            translated_keywords = truncate_keywords(translated_keywords, 100)
+                            translated_data["keywords"] = translated_keywords
+
+                        if base_data.get("promotionalText"):
+                            print(f"  • Translating promotional text...")
+                            translated_data["promotional_text"] = provider.translate(
+                                base_data["promotionalText"],
+                                language_name,
+                                max_length=get_field_limit("promotional_text")
+                            )
+
+                        if base_data.get("whatsNew"):
+                            print(f"  • Translating what's new...")
+                            translated_data["whats_new"] = provider.translate(
+                                base_data["whatsNew"],
+                                language_name,
+                                max_length=get_field_limit("whats_new")
+                            )
+
+                        self.asc_client.create_app_store_version_localization(
+                            version_id=version_id,
+                            locale=target_locale,
+                            description=translated_data.get("description", ""),
+                            keywords=translated_data.get("keywords"),
+                            promotional_text=translated_data.get("promotional_text"),
+                            whats_new=translated_data.get("whats_new")
+                        )
+
+                        print_success(f"  ✅ {language_name} translation completed")
+                        success_count += 1
+                        time.sleep(2)  # Rate limiting
+                        break
+
+                    except Exception as e:
+                        error_message = str(e)
+                        if "409" in error_message and "Conflict" in error_message:
+                            existing_localizations = self.asc_client.get_app_store_version_localizations(version_id)
+                            locale_entry = find_matching_locale_entry(
+                                existing_localizations.get("data", []),
+                                target_locale,
+                            )
+
+                            if locale_entry:
+                                localization_id = locale_entry["id"]
+                                self.asc_client.update_app_store_version_localization(
+                                    localization_id=localization_id,
+                                    description=translated_data.get("description"),
+                                    keywords=translated_data.get("keywords"),
+                                    promotional_text=translated_data.get("promotional_text"),
+                                    whats_new=translated_data.get("whats_new"),
+                                )
+                                print_success(f"  ✅ {language_name} localization updated (existing locale)")
+                                success_count += 1
+                            else:
+                                print_error(f"  ❌ {language_name} locale not available. Please add it in App Store Connect first.")
+                            break
+
                         print_error(f"  ❌ Failed to translate to {language_name}: {error_message}")
-                    continue
+                        next_provider = self._prompt_retry_with_another_provider(
+                            selected_provider,
+                            error_message,
+                            language_name,
+                        )
+                        if next_provider:
+                            selected_provider = next_provider
+                            provider = self.ai_manager.get_provider(selected_provider)
+                            if provider:
+                                print_info(f"Retrying {language_name} with provider: {selected_provider}")
+                                continue
+                            print_error(f"Provider not found: {selected_provider}")
+                        break
 
             print()
             print_success("Metadata translation completed!")
@@ -877,7 +941,7 @@ class TranslateRCLI:
             if include_app_info:
                 print()
                 print_info("Now translating app name & subtitle...")
-                self._translate_app_info(app_id, target_locales, provider)
+                self._translate_app_info(app_id, target_locales, provider, selected_provider)
             
             if success_count > 0:
                 self._maybe_save_app_id(app_id)
@@ -888,7 +952,13 @@ class TranslateRCLI:
         input("\nPress Enter to continue...")
         return True
     
-    def _translate_app_info(self, app_id: str, target_locales: List[str], provider):
+    def _translate_app_info(
+        self,
+        app_id: str,
+        target_locales: List[str],
+        provider,
+        selected_provider: Optional[str] = None,
+    ):
         """Helper method to translate app name and subtitle for given locales."""
         try:
             # Find primary app info ID
@@ -943,65 +1013,78 @@ class TranslateRCLI:
                 print()
                 print(format_progress(i, len(target_locales), f"Translating {language_name} app info"))
                 
-                try:
-                    translated_data = {}
-                    
-                    # Translate name
-                    if base_name:
-                        print(f"  • Translating app name...")
-                        translated_name = provider.translate(
-                            base_name,
-                            language_name,
-                            max_length=30
-                        )
-                        if len(translated_name) > 30:
-                            translated_name = translated_name[:30]
-                        translated_data["name"] = translated_name
-                    
-                    # Translate subtitle
-                    if base_subtitle:
-                        print(f"  • Translating subtitle...")
-                        translated_subtitle = provider.translate(
-                            base_subtitle,
-                            language_name,
-                            max_length=30
-                        )
-                        if len(translated_subtitle) > 30:
-                            translated_subtitle = translated_subtitle[:30]
-                        translated_data["subtitle"] = translated_subtitle
+                while True:
+                    try:
+                        translated_data = {}
 
-                    # Copy URLs from base locale without translation
-                    if base_privacy_policy_url:
-                        translated_data["privacy_policy_url"] = base_privacy_policy_url
-                    if base_marketing_url:
-                        translated_data["marketing_url"] = base_marketing_url
-                    if base_support_url:
-                        translated_data["support_url"] = base_support_url
-                    
-                    # Create or update app info localization
-                    locale_entry = find_matching_locale_entry(
-                        existing_localizations.get("data", []),
-                        target_locale,
-                    )
-                    if locale_entry:
-                        self.asc_client.update_app_info_localization(
-                            locale_entry["id"],
-                            **translated_data
-                        )
-                    else:
-                        self.asc_client.create_app_info_localization(
-                            app_info_id,
+                        if base_name:
+                            print(f"  • Translating app name...")
+                            translated_name = provider.translate(
+                                base_name,
+                                language_name,
+                                max_length=30
+                            )
+                            if len(translated_name) > 30:
+                                translated_name = translated_name[:30]
+                            translated_data["name"] = translated_name
+
+                        if base_subtitle:
+                            print(f"  • Translating subtitle...")
+                            translated_subtitle = provider.translate(
+                                base_subtitle,
+                                language_name,
+                                max_length=30
+                            )
+                            if len(translated_subtitle) > 30:
+                                translated_subtitle = translated_subtitle[:30]
+                            translated_data["subtitle"] = translated_subtitle
+
+                        if base_privacy_policy_url:
+                            translated_data["privacy_policy_url"] = base_privacy_policy_url
+                        if base_marketing_url:
+                            translated_data["marketing_url"] = base_marketing_url
+                        if base_support_url:
+                            translated_data["support_url"] = base_support_url
+
+                        locale_entry = find_matching_locale_entry(
+                            existing_localizations.get("data", []),
                             target_locale,
-                            **translated_data
                         )
-                    
-                    print_success(f"  ✅ {language_name} app info translation completed")
-                    success_count += 1
-                    time.sleep(1)  # Rate limiting
-                    
-                except Exception as e:
-                    print_error(f"  ❌ Failed to translate {language_name} app info: {str(e)}")
-                    continue
+                        if locale_entry:
+                            self.asc_client.update_app_info_localization(
+                                locale_entry["id"],
+                                **translated_data
+                            )
+                        else:
+                            self.asc_client.create_app_info_localization(
+                                app_info_id,
+                                target_locale,
+                                **translated_data
+                            )
+
+                        print_success(f"  ✅ {language_name} app info translation completed")
+                        success_count += 1
+                        time.sleep(1)  # Rate limiting
+                        break
+
+                    except Exception as e:
+                        error_message = str(e)
+                        print_error(f"  ❌ Failed to translate {language_name} app info: {error_message}")
+                        if not selected_provider:
+                            break
+                        next_provider = self._prompt_retry_with_another_provider(
+                            selected_provider,
+                            error_message,
+                            f"{language_name} app info",
+                        )
+                        if next_provider:
+                            selected_provider = next_provider
+                            provider = self.ai_manager.get_provider(selected_provider)
+                            if provider:
+                                print_info(f"Retrying {language_name} app info with provider: {selected_provider}")
+                                continue
+                            print_error(f"Provider not found: {selected_provider}")
+                        break
             
             print()
             print_success(f"App name & subtitle translation completed! {success_count}/{len(target_locales)} languages processed")
@@ -1151,28 +1234,14 @@ class TranslateRCLI:
                     return True
             
             # Select AI provider
-            providers = self.ai_manager.list_providers()
-            if len(providers) == 1:
-                selected_provider = providers[0]
-                print_info(f"Using AI provider: {selected_provider}")
-            else:
-                print()
-                print("Available AI providers:")
-                for i, provider in enumerate(providers, 1):
-                    print(f"{i}. {provider}")
-                
-                while True:
-                    try:
-                        choice = int(input("Select AI provider (number): ").strip())
-                        if 1 <= choice <= len(providers):
-                            selected_provider = providers[choice - 1]
-                            break
-                        else:
-                            print_error("Invalid choice")
-                    except ValueError:
-                        print_error("Please enter a number")
-            
+            selected_provider = self._select_ai_provider()
+            if not selected_provider:
+                return True
+
             provider = self.ai_manager.get_provider(selected_provider)
+            if not provider:
+                print_error(f"Provider not found: {selected_provider}")
+                return True
             
             # Show summary before starting
             print()
@@ -1207,72 +1276,81 @@ class TranslateRCLI:
                     print_error(f"  ❌ Localization ID not found for {language_name}")
                     continue
                 
-                try:
-                    # Prepare update data
-                    update_data = {}
-                    
-                    for field in selected_fields:
-                        field_name, source_content = field_mapping[field]
-                        if source_content:
-                            print(f"  • Translating {field_name.lower()}...")
-                            
-                            is_keywords = field == "keywords"
-                            max_length = get_field_limit(field.replace("_", ""))
-                            
-                            translated_content = provider.translate(
-                                source_content,
-                                language_name,
-                                max_length=max_length,
-                                is_keywords=is_keywords
-                            )
-                            
-                            if is_keywords:
-                                # Clean and format keywords properly
-                                translated_content = translated_content.strip().rstrip('.')
-                                translated_content = truncate_keywords(translated_content)
-                            
-                            # Final safeguard: enforce character limits
-                            if field == "keywords" and len(translated_content) > 100:
-                                translated_content = truncate_keywords(translated_content, 100)
-                            elif field == "promotional_text" and len(translated_content) > 170:
-                                translated_content = translated_content[:170]
-                            elif field == "description" and len(translated_content) > 4000:
-                                translated_content = translated_content[:4000]
-                            elif field == "whats_new" and len(translated_content) > 4000:
-                                translated_content = translated_content[:4000]
-                            
-                            # Map to API field names
-                            api_field_name = {
-                                "description": "description",
-                                "keywords": "keywords", 
-                                "promotional_text": "promotional_text",
-                                "whats_new": "whats_new"
-                            }[field]
-                            
-                            update_data[api_field_name] = translated_content
-                    
-                    # Try to update the localization
+                while True:
                     try:
-                        self.asc_client.update_app_store_version_localization(
-                            localization_id=localization_ids[target_locale],
-                            **update_data
-                        )
-                        print_success(f"  ✅ {language_name} updated successfully")
-                        success_count += 1
-                        
-                    except Exception as update_error:
-                        if "409" in str(update_error):
-                            print_warning(f"  ⚠️  Update failed due to API conflict. This localization may be locked.")
-                            print_error(f"  ❌ Skipping {language_name}: {str(update_error)}")
-                            continue
-                        else:
+                        # Prepare update data
+                        update_data = {}
+
+                        for field in selected_fields:
+                            field_name, source_content = field_mapping[field]
+                            if source_content:
+                                print(f"  • Translating {field_name.lower()}...")
+
+                                is_keywords = field == "keywords"
+                                max_length = get_field_limit(field.replace("_", ""))
+
+                                translated_content = provider.translate(
+                                    source_content,
+                                    language_name,
+                                    max_length=max_length,
+                                    is_keywords=is_keywords
+                                )
+
+                                if is_keywords:
+                                    translated_content = translated_content.strip().rstrip('.')
+                                    translated_content = truncate_keywords(translated_content)
+
+                                if field == "keywords" and len(translated_content) > 100:
+                                    translated_content = truncate_keywords(translated_content, 100)
+                                elif field == "promotional_text" and len(translated_content) > 170:
+                                    translated_content = translated_content[:170]
+                                elif field == "description" and len(translated_content) > 4000:
+                                    translated_content = translated_content[:4000]
+                                elif field == "whats_new" and len(translated_content) > 4000:
+                                    translated_content = translated_content[:4000]
+
+                                api_field_name = {
+                                    "description": "description",
+                                    "keywords": "keywords",
+                                    "promotional_text": "promotional_text",
+                                    "whats_new": "whats_new"
+                                }[field]
+
+                                update_data[api_field_name] = translated_content
+
+                        try:
+                            self.asc_client.update_app_store_version_localization(
+                                localization_id=localization_ids[target_locale],
+                                **update_data
+                            )
+                            print_success(f"  ✅ {language_name} updated successfully")
+                            success_count += 1
+                        except Exception as update_error:
+                            if "409" in str(update_error):
+                                print_warning(f"  ⚠️  Update failed due to API conflict. This localization may be locked.")
+                                print_error(f"  ❌ Skipping {language_name}: {str(update_error)}")
+                                break
                             raise update_error
-                    
-                    time.sleep(3)  # Rate limiting
-                    
-                except Exception as e:
-                    print_error(f"  ❌ Failed to update {language_name}: {str(e)}")
-                    continue
+
+                        time.sleep(3)  # Rate limiting
+                        break
+
+                    except Exception as e:
+                        error_message = str(e)
+                        print_error(f"  ❌ Failed to update {language_name}: {error_message}")
+                        next_provider = self._prompt_retry_with_another_provider(
+                            selected_provider,
+                            error_message,
+                            language_name,
+                        )
+                        if next_provider:
+                            selected_provider = next_provider
+                            provider = self.ai_manager.get_provider(selected_provider)
+                            if provider:
+                                print_info(f"Retrying {language_name} with provider: {selected_provider}")
+                                continue
+                            print_error(f"Provider not found: {selected_provider}")
+                        break
             
             print()
             print_success(f"Update completed! {success_count}/{len(target_locales)} languages updated successfully")
@@ -1529,28 +1607,14 @@ class TranslateRCLI:
                 return True
             
             # Select AI provider
-            providers = self.ai_manager.list_providers()
-            if len(providers) == 1:
-                selected_provider = providers[0]
-                print_info(f"Using AI provider: {selected_provider}")
-            else:
-                print()
-                print("Available AI providers:")
-                for i, provider in enumerate(providers, 1):
-                    print(f"{i}. {provider}")
-                
-                while True:
-                    try:
-                        provider_choice = int(input("Select AI provider (number): ").strip())
-                        if 1 <= provider_choice <= len(providers):
-                            selected_provider = providers[provider_choice - 1]
-                            break
-                        else:
-                            print_error("Invalid choice")
-                    except ValueError:
-                        print_error("Please enter a number")
-            
+            selected_provider = self._select_ai_provider()
+            if not selected_provider:
+                return True
+
             provider = self.ai_manager.get_provider(selected_provider)
+            if not provider:
+                print_error(f"Provider not found: {selected_provider}")
+                return True
             
             # Confirm before starting
             print()
@@ -1578,93 +1642,99 @@ class TranslateRCLI:
                 print()
                 print(format_progress(i, len(target_locales), f"Setting up {language_name}"))
                 
-                try:
-                    # Translate all available fields
+                while True:
                     translated_data = {}
-                    
-                    # Description
-                    if base_data.get("description"):
-                        print(f"  • Translating description...")
-                        translated_data["description"] = provider.translate(
-                            base_data["description"], 
-                            language_name,
-                            max_length=get_field_limit("description")
-                        )
-                    
-                    # Keywords
-                    if base_data.get("keywords"):
-                        print(f"  • Translating keywords...")
-                        translated_keywords = provider.translate(
-                            base_data["keywords"], 
-                            language_name,
-                            max_length=get_field_limit("keywords"),
-                            is_keywords=True
-                        )
-                        # Clean and format keywords properly
-                        translated_keywords = translated_keywords.strip().rstrip('.')
-                        translated_keywords = truncate_keywords(translated_keywords, 100)
-                        translated_data["keywords"] = translated_keywords
-                    
-                    # Promotional text
-                    if base_data.get("promotionalText"):
-                        print(f"  • Translating promotional text...")
-                        translated_data["promotional_text"] = provider.translate(
-                            base_data["promotionalText"], 
-                            language_name,
-                            max_length=get_field_limit("promotional_text")
-                        )
-                    
-                    # What's new
-                    if base_data.get("whatsNew"):
-                        print(f"  • Translating what's new...")
-                        translated_data["whats_new"] = provider.translate(
-                            base_data["whatsNew"], 
-                            language_name,
-                            max_length=get_field_limit("whats_new")
-                        )
-                    
-                    # Create new localization
-                    self.asc_client.create_app_store_version_localization(
-                        version_id=version_id,
-                        locale=target_locale,
-                        description=translated_data.get("description", ""),
-                        keywords=translated_data.get("keywords"),
-                        promotional_text=translated_data.get("promotional_text"),
-                        whats_new=translated_data.get("whats_new")
-                    )
-                    
-                    print_success(f"  ✅ {language_name} setup completed")
-                    success_count += 1
-                    successful_locales.append(target_locale)
-                    time.sleep(2)  # Rate limiting
-                    
-                except Exception as e:
-                    error_message = str(e)
-                    if "409" in error_message and "Conflict" in error_message:
-                        # Check if localization actually exists or if it needs to be created in App Store Connect first
-                        existing_localizations = self.asc_client.get_app_store_version_localizations(version_id)
-                        locale_entry = find_matching_locale_entry(
-                            existing_localizations.get("data", []),
-                            target_locale,
-                        )
-                        
-                        if locale_entry:
-                            localization_id = locale_entry["id"]
-                            self.asc_client.update_app_store_version_localization(
-                                localization_id=localization_id,
-                                description=translated_data.get("description"),
-                                keywords=translated_data.get("keywords"),
-                                promotional_text=translated_data.get("promotional_text"),
-                                whats_new=translated_data.get("whats_new"),
+                    try:
+                        if base_data.get("description"):
+                            print(f"  • Translating description...")
+                            translated_data["description"] = provider.translate(
+                                base_data["description"],
+                                language_name,
+                                max_length=get_field_limit("description")
                             )
-                            print_success(f"  ✅ {language_name} localization updated (existing locale)")
-                            success_count += 1
-                            successful_locales.append(target_locale)
-                        else:
-                            print_error(f"  ❌ {language_name} locale not available. Please add it in App Store Connect first.")
-                    else:
+
+                        if base_data.get("keywords"):
+                            print(f"  • Translating keywords...")
+                            translated_keywords = provider.translate(
+                                base_data["keywords"],
+                                language_name,
+                                max_length=get_field_limit("keywords"),
+                                is_keywords=True
+                            )
+                            translated_keywords = translated_keywords.strip().rstrip('.')
+                            translated_keywords = truncate_keywords(translated_keywords, 100)
+                            translated_data["keywords"] = translated_keywords
+
+                        if base_data.get("promotionalText"):
+                            print(f"  • Translating promotional text...")
+                            translated_data["promotional_text"] = provider.translate(
+                                base_data["promotionalText"],
+                                language_name,
+                                max_length=get_field_limit("promotional_text")
+                            )
+
+                        if base_data.get("whatsNew"):
+                            print(f"  • Translating what's new...")
+                            translated_data["whats_new"] = provider.translate(
+                                base_data["whatsNew"],
+                                language_name,
+                                max_length=get_field_limit("whats_new")
+                            )
+
+                        self.asc_client.create_app_store_version_localization(
+                            version_id=version_id,
+                            locale=target_locale,
+                            description=translated_data.get("description", ""),
+                            keywords=translated_data.get("keywords"),
+                            promotional_text=translated_data.get("promotional_text"),
+                            whats_new=translated_data.get("whats_new")
+                        )
+
+                        print_success(f"  ✅ {language_name} setup completed")
+                        success_count += 1
+                        successful_locales.append(target_locale)
+                        time.sleep(2)  # Rate limiting
+                        break
+
+                    except Exception as e:
+                        error_message = str(e)
+                        if "409" in error_message and "Conflict" in error_message:
+                            existing_localizations = self.asc_client.get_app_store_version_localizations(version_id)
+                            locale_entry = find_matching_locale_entry(
+                                existing_localizations.get("data", []),
+                                target_locale,
+                            )
+
+                            if locale_entry:
+                                localization_id = locale_entry["id"]
+                                self.asc_client.update_app_store_version_localization(
+                                    localization_id=localization_id,
+                                    description=translated_data.get("description"),
+                                    keywords=translated_data.get("keywords"),
+                                    promotional_text=translated_data.get("promotional_text"),
+                                    whats_new=translated_data.get("whats_new"),
+                                )
+                                print_success(f"  ✅ {language_name} localization updated (existing locale)")
+                                success_count += 1
+                                successful_locales.append(target_locale)
+                            else:
+                                print_error(f"  ❌ {language_name} locale not available. Please add it in App Store Connect first.")
+                            break
+
                         print_error(f"  ❌ Failed to setup {language_name}: {error_message}")
-                    continue
+                        next_provider = self._prompt_retry_with_another_provider(
+                            selected_provider,
+                            error_message,
+                            language_name,
+                        )
+                        if next_provider:
+                            selected_provider = next_provider
+                            provider = self.ai_manager.get_provider(selected_provider)
+                            if provider:
+                                print_info(f"Retrying {language_name} with provider: {selected_provider}")
+                                continue
+                            print_error(f"Provider not found: {selected_provider}")
+                        break
             
             print()
             print_success(f"Version localization completed! {success_count}/{len(target_locales)} languages set up successfully")
@@ -1896,28 +1966,14 @@ class TranslateRCLI:
                     print_error(f"Invalid language codes: {', '.join(invalid_locales)}")
                     return True
             
-            providers = self.ai_manager.list_providers()
-            if len(providers) == 1:
-                selected_provider = providers[0]
-                print_info(f"Using AI provider: {selected_provider}")
-            else:
-                print()
-                print("Available AI providers:")
-                for i, provider in enumerate(providers, 1):
-                    print(f"{i}. {provider}")
-                
-                while True:
-                    try:
-                        choice = int(input("Select AI provider (number): ").strip())
-                        if 1 <= choice <= len(providers):
-                            selected_provider = providers[choice - 1]
-                            break
-                        else:
-                            print_error("Invalid choice")
-                    except ValueError:
-                        print_error("Please enter a number")
-            
+            selected_provider = self._select_ai_provider()
+            if not selected_provider:
+                return True
+
             provider = self.ai_manager.get_provider(selected_provider)
+            if not provider:
+                print_error(f"Provider not found: {selected_provider}")
+                return True
             
             print()
             print_info(f"Starting app name & subtitle translation for {len(target_locales)} languages...")
@@ -1929,73 +1985,87 @@ class TranslateRCLI:
                 print()
                 print(format_progress(i, len(target_locales), f"Translating to {language_name}"))
                 
-                try:
+                while True:
                     translated_name = None
                     translated_subtitle = None
-                    
-                    if translate_name and base_name:
-                        print("  • Translating app name...")
-                        translated_name = provider.translate(
-                            text=base_name,
-                            target_language=language_name,
-                            max_length=30,
-                            is_keywords=False
-                        )
-                    
-                    if translate_subtitle and base_subtitle:
-                        print("  • Translating app subtitle...")
-                        translated_subtitle = provider.translate(
-                            text=base_subtitle,
-                            target_language=language_name,
-                            max_length=30,
-                            is_keywords=False
-                        )
-                    
-                    locale_entry = find_matching_locale_entry(
-                        existing_localizations.get("data", []),
-                        target_locale,
-                    )
-                    if locale_entry:
-                        localization_id = locale_entry["id"]
-                        self.asc_client.update_app_info_localization(
-                            localization_id=localization_id,
-                            name=translated_name,
-                            subtitle=translated_subtitle
-                        )
-                    else:
-                        self.asc_client.create_app_info_localization(
-                            app_info_id=app_info_id,
-                            locale=target_locale,
-                            name=translated_name,
-                            subtitle=translated_subtitle
-                        )
-                    
-                    print_success(f"  ✅ {language_name} translation completed")
-                    success_count += 1
-                    time.sleep(2)
-                    
-                except Exception as e:
-                    error_message = str(e)
-                    if "409" in error_message and "Conflict" in error_message:
-                        existing_app_info_localizations = self.asc_client.get_app_info_localizations(app_info_id)
+                    try:
+                        if translate_name and base_name:
+                            print("  • Translating app name...")
+                            translated_name = provider.translate(
+                                text=base_name,
+                                target_language=language_name,
+                                max_length=30,
+                                is_keywords=False
+                            )
+
+                        if translate_subtitle and base_subtitle:
+                            print("  • Translating app subtitle...")
+                            translated_subtitle = provider.translate(
+                                text=base_subtitle,
+                                target_language=language_name,
+                                max_length=30,
+                                is_keywords=False
+                            )
+
                         locale_entry = find_matching_locale_entry(
-                            existing_app_info_localizations.get("data", []),
+                            existing_localizations.get("data", []),
                             target_locale,
                         )
-                        
                         if locale_entry:
+                            localization_id = locale_entry["id"]
                             self.asc_client.update_app_info_localization(
-                                localization_id=locale_entry["id"],
-                                name=translated_name if translate_name else None,
-                                subtitle=translated_subtitle if translate_subtitle else None,
+                                localization_id=localization_id,
+                                name=translated_name,
+                                subtitle=translated_subtitle
                             )
-                            print_success(f"  ✅ {language_name} app info updated (existing locale)")
-                            success_count += 1
                         else:
-                            print_error(f"  ❌ {language_name} locale not available. Please add it in App Store Connect first.")
-                    else:
+                            self.asc_client.create_app_info_localization(
+                                app_info_id=app_info_id,
+                                locale=target_locale,
+                                name=translated_name,
+                                subtitle=translated_subtitle
+                            )
+
+                        print_success(f"  ✅ {language_name} translation completed")
+                        success_count += 1
+                        time.sleep(2)
+                        break
+
+                    except Exception as e:
+                        error_message = str(e)
+                        if "409" in error_message and "Conflict" in error_message:
+                            existing_app_info_localizations = self.asc_client.get_app_info_localizations(app_info_id)
+                            locale_entry = find_matching_locale_entry(
+                                existing_app_info_localizations.get("data", []),
+                                target_locale,
+                            )
+
+                            if locale_entry:
+                                self.asc_client.update_app_info_localization(
+                                    localization_id=locale_entry["id"],
+                                    name=translated_name if translate_name else None,
+                                    subtitle=translated_subtitle if translate_subtitle else None,
+                                )
+                                print_success(f"  ✅ {language_name} app info updated (existing locale)")
+                                success_count += 1
+                            else:
+                                print_error(f"  ❌ {language_name} locale not available. Please add it in App Store Connect first.")
+                            break
+
                         print_error(f"  ❌ Failed to translate {language_name}: {error_message}")
-                    continue
+                        next_provider = self._prompt_retry_with_another_provider(
+                            selected_provider,
+                            error_message,
+                            language_name,
+                        )
+                        if next_provider:
+                            selected_provider = next_provider
+                            provider = self.ai_manager.get_provider(selected_provider)
+                            if provider:
+                                print_info(f"Retrying {language_name} with provider: {selected_provider}")
+                                continue
+                            print_error(f"Provider not found: {selected_provider}")
+                        break
 
             print()
             print_success(f"App name & subtitle translation completed! {success_count}/{len(target_locales)} languages translated successfully")

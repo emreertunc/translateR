@@ -231,7 +231,7 @@ All AI requests and responses are automatically logged for debugging and quality
 ```
 [2025-08-05 10:30:15] REQUEST
 Provider: Anthropic Claude
-Model: claude-sonnet-4-20250514
+Model: claude-sonnet-4-6
 Target Language: German
 Max Length: 100
 Original Text (45 chars):

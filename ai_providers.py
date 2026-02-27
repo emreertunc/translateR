@@ -12,6 +12,27 @@ import os
 from ai_logger import log_ai_request, log_ai_response, log_character_limit_retry
 
 
+def _extract_error_message(response: requests.Response) -> str:
+    """Return provider error message with API body when available."""
+    try:
+        payload = response.json()
+    except ValueError:
+        payload = None
+
+    if isinstance(payload, dict):
+        err = payload.get("error")
+        if isinstance(err, dict):
+            message = err.get("message")
+            if isinstance(message, str) and message.strip():
+                return message.strip()
+        message = payload.get("message")
+        if isinstance(message, str) and message.strip():
+            return message.strip()
+
+    text = (response.text or "").strip()
+    return text[:400] if text else f"HTTP {response.status_code}"
+
+
 class AIProvider(ABC):
     """Abstract base class for AI translation providers."""
     
@@ -101,7 +122,9 @@ class AnthropicProvider(AIProvider):
             }
             
             response = requests.post(url, headers=headers, json=data)
-            response.raise_for_status()
+            if not response.ok:
+                message = _extract_error_message(response)
+                raise ValueError(f"Anthropic API error ({response.status_code}): {message}")
             
             response_data = response.json()
             
@@ -119,7 +142,9 @@ class AnthropicProvider(AIProvider):
                 data["system"] = system_message
                 
                 response = requests.post(url, headers=headers, json=data)
-                response.raise_for_status()
+                if not response.ok:
+                    message = _extract_error_message(response)
+                    raise ValueError(f"Anthropic API error ({response.status_code}): {message}")
                 response_data = response.json()
                 translated_text = response_data["content"][0]["text"]
             
@@ -142,6 +167,69 @@ class OpenAIProvider(AIProvider):
     def __init__(self, api_key: str, model: str = None):
         self.api_key = api_key
         self.model = model
+
+    def _uses_responses_api(self) -> bool:
+        """Use Responses API for GPT-5 family models."""
+        return bool(self.model) and self.model.startswith("gpt-5")
+
+    def _build_request_payload(self, system_message: str, text: str) -> Dict[str, Any]:
+        """Build request payload based on selected OpenAI API."""
+        if self._uses_responses_api():
+            return {
+                "model": self.model,
+                "input": [
+                    {
+                        "role": "system",
+                        "content": [{"type": "input_text", "text": system_message}]
+                    },
+                    {
+                        "role": "user",
+                        "content": [{"type": "input_text", "text": text}]
+                    }
+                ],
+                "max_output_tokens": 1000,
+                "reasoning": {"effort": "medium"}
+            }
+
+        return {
+            "model": self.model,
+            "messages": [
+                {"role": "system", "content": system_message},
+                {"role": "user", "content": text}
+            ],
+            "max_tokens": 1000,
+            "temperature": 0.7
+        }
+
+    def _extract_response_text(self, response_data: Dict[str, Any]) -> str:
+        """Extract translated text from either Responses or Chat Completions format."""
+        if self._uses_responses_api():
+            output_text = response_data.get("output_text")
+            if output_text:
+                return str(output_text)
+
+            for item in response_data.get("output", []):
+                if not isinstance(item, dict):
+                    continue
+
+                item_type = item.get("type")
+                if item_type in ("output_text", "text") and item.get("text"):
+                    return str(item["text"])
+
+                if item_type == "message":
+                    for content in item.get("content", []):
+                        if not isinstance(content, dict):
+                            continue
+                        text_value = content.get("text") or content.get("value")
+                        if text_value:
+                            return str(text_value)
+
+            raise ValueError("Unexpected Responses API format")
+
+        if "choices" in response_data and len(response_data["choices"]) > 0:
+            return response_data["choices"][0]["message"]["content"]
+
+        raise ValueError("Unexpected Chat Completions API format")
     
     def translate(self, text: str, target_language: str, 
                   max_length: Optional[int] = None, 
@@ -155,7 +243,11 @@ class OpenAIProvider(AIProvider):
         log_ai_request("OpenAI GPT", self.model, text, target_language, max_length, is_keywords)
         
         try:
-            url = "https://api.openai.com/v1/chat/completions"
+            url = (
+                "https://api.openai.com/v1/responses"
+                if self._uses_responses_api()
+                else "https://api.openai.com/v1/chat/completions"
+            )
             headers = {
                 "Authorization": f"Bearer {self.api_key}",
                 "Content-Type": "application/json"
@@ -183,25 +275,13 @@ class OpenAIProvider(AIProvider):
                     f"original message while staying within the character limit."
                 )
             
-            data = {
-                "model": self.model,
-                "messages": [
-                    {"role": "system", "content": system_message},
-                    {"role": "user", "content": text}
-                ],
-                "max_tokens": 1000,
-                "temperature": 0.7
-            }
+            data = self._build_request_payload(system_message, text)
             
             response = requests.post(url, headers=headers, json=data)
             response.raise_for_status()
             
             response_data = response.json()
-            
-            if "choices" in response_data and len(response_data["choices"]) > 0:
-                translated_text = response_data["choices"][0]["message"]["content"]
-            else:
-                raise ValueError("Unexpected API response format")
+            translated_text = self._extract_response_text(response_data)
             
             # Check character limit and retry if needed
             if max_length and len(translated_text) > max_length:
@@ -209,12 +289,12 @@ class OpenAIProvider(AIProvider):
                 
                 # Try again with even stricter instructions
                 system_message += f" The text MUST be under {max_length} characters INCLUDING SPACES AND PUNCTUATION. Count every character. Prioritize brevity."
-                data["messages"][0]["content"] = system_message
+                data = self._build_request_payload(system_message, text)
                 
                 response = requests.post(url, headers=headers, json=data)
                 response.raise_for_status()
                 response_data = response.json()
-                translated_text = response_data["choices"][0]["message"]["content"]
+                translated_text = self._extract_response_text(response_data)
             
             # Log successful response
             log_ai_response("OpenAI GPT", translated_text, success=True)
@@ -235,6 +315,38 @@ class GoogleGeminiProvider(AIProvider):
     def __init__(self, api_key: str, model: str = None):
         self.api_key = api_key
         self.model = model
+
+    def _candidate_api_versions(self) -> List[str]:
+        """
+        Return API versions to try.
+        Gemini 3 family is currently exposed via v1beta for many keys.
+        """
+        if self.model and self.model.startswith("gemini-3"):
+            return ["v1beta", "v1"]
+        return ["v1", "v1beta"]
+
+    def _post_generate_content(self, data: Dict[str, Any]) -> Dict[str, Any]:
+        """Call Gemini API with version fallback for model availability differences."""
+        last_error: Optional[str] = None
+
+        for version in self._candidate_api_versions():
+            url = (
+                f"https://generativelanguage.googleapis.com/{version}/"
+                f"models/{self.model}:generateContent?key={self.api_key}"
+            )
+            response = requests.post(url, headers={"Content-Type": "application/json"}, json=data)
+            if response.ok:
+                return response.json()
+
+            # Model may exist only in the other API version; retry there on 404.
+            if response.status_code == 404:
+                last_error = f"{version}: {_extract_error_message(response)}"
+                continue
+
+            message = _extract_error_message(response)
+            raise ValueError(f"Google Gemini API error ({response.status_code}, {version}): {message}")
+
+        raise ValueError(f"Google Gemini model unavailable: {self.model} ({last_error or 'no details'})")
     
     def translate(self, text: str, target_language: str, 
                   max_length: Optional[int] = None, 
@@ -248,11 +360,6 @@ class GoogleGeminiProvider(AIProvider):
         log_ai_request("Google Gemini", self.model, text, target_language, max_length, is_keywords)
         
         try:
-            url = f"https://generativelanguage.googleapis.com/v1/models/{self.model}:generateContent?key={self.api_key}"
-            headers = {
-                "Content-Type": "application/json"
-            }
-            
             # Build prompt
             prompt = (
                 f"You are a professional translator specializing in App Store metadata translation. "
@@ -289,10 +396,7 @@ class GoogleGeminiProvider(AIProvider):
                 }
             }
             
-            response = requests.post(url, headers=headers, json=data)
-            response.raise_for_status()
-            
-            response_data = response.json()
+            response_data = self._post_generate_content(data)
             
             if ("candidates" in response_data and 
                 len(response_data["candidates"]) > 0 and
@@ -315,9 +419,7 @@ class GoogleGeminiProvider(AIProvider):
                 prompt += f" The text MUST be under {max_length} characters INCLUDING SPACES AND PUNCTUATION. Count every character. Prioritize brevity."
                 data["contents"][0]["parts"][0]["text"] = prompt
                 
-                response = requests.post(url, headers=headers, json=data)
-                response.raise_for_status()
-                response_data = response.json()
+                response_data = self._post_generate_content(data)
                 translated_text = response_data["candidates"][0]["content"]["parts"][0]["text"]
             
             # Log successful response
