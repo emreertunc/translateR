@@ -18,7 +18,7 @@ from typing import Optional, Dict, Any, List
 
 from config import ConfigManager
 from app_store_client import AppStoreConnectClient
-from ai_providers import AIProviderManager, AnthropicProvider, OpenAIProvider, GoogleGeminiProvider
+from ai_providers import AIProviderManager, AnthropicProvider, OpenAIProvider, GoogleGeminiProvider, OpenRouterProvider
 from ui import UI
 from workflows.iap_translate import run as iap_translate_run
 from workflows.subscription_translate import run as subscription_translate_run
@@ -69,6 +69,13 @@ class TranslateRCLI:
                 default_model = providers_config.get("google", {}).get("default_model", "gemini-3-flash-preview")
                 google = GoogleGeminiProvider(google_key, default_model)
                 self.ai_manager.add_provider("google", google)
+            
+            # Setup OpenRouter
+            openrouter_key = self.config.get_ai_provider_key("openrouter")
+            if openrouter_key:
+                default_model = providers_config.get("openrouter", {}).get("default_model", "google/gemini-3.1-pro-preview")
+                openrouter = OpenRouterProvider(openrouter_key, default_model)
+                self.ai_manager.add_provider("openrouter", openrouter)
                 
         except Exception as e:
             print_error(f"Error setting up AI providers: {e}")
@@ -136,16 +143,24 @@ class TranslateRCLI:
         print("Configure at least one AI provider for translations:")
         
         # AI providers setup
-        providers = ["anthropic", "openai", "google"]
+        providers = ["anthropic", "openai", "google", "openrouter"]
         provider_names = {
             "anthropic": "Anthropic Claude",
             "openai": "OpenAI GPT", 
-            "google": "Google Gemini"
+            "google": "Google Gemini",
+            "openrouter": "OpenRouter"
         }
+        
+        print("\nAvailable models for each provider:")
+        print("- OpenRouter: Access to GPT, Claude, Gemini, Llama, Mistral and many more models")
+        print()
         
         for provider in providers:
             response = input(f"Do you want to configure {provider_names[provider]}? (y/n): ").strip().lower()
             if response in ['y', 'yes']:
+                if provider == "openrouter":
+                    print("\n  OpenRouter provides access to many AI models via a unified API.")
+                    print("  Get your API key from: https://openrouter.ai/settings")
                 api_key = input(f"Enter {provider_names[provider]} API key: ").strip()
                 if api_key:
                     api_keys["ai_providers"][provider] = api_key
