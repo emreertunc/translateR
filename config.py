@@ -92,6 +92,35 @@ class ConfigManager:
                     "gemini-2.5-flash-lite"
                 ],
                 "default_model": "gemini-3-flash-preview"
+            },
+            "openrouter": {
+                "name": "OpenRouter",
+                "class": "OpenRouterProvider",
+                "models": [
+                    "openai/gpt-5.4",
+                    "openai/gpt-5.4-pro",
+                    "openai/gpt-5.3-codex",
+                    "openai/gpt-4o-mini",
+                    "openai/gpt-5.2",
+                    "openai/gpt-5-nano",
+                    "openai/gpt-oss-120b",
+                    "anthropic/claude-haiku-4.5",
+                    "anthropic/claude-opus-4.6",
+                    "anthropic/claude-sonnet-4.6",
+                    "google/gemini-3.1-flash-lite-preview",
+                    "google/gemini-3.1-pro-preview",
+                    "meta-llama/llama-4-maverick",
+                    "meta-llama/llama-guard-4-12b",
+                    "mistralai/mistral-small-creative",
+                    "mistralai/ministral-14b-2512",
+                    "deepseek/deepseek-v3.2-speciale",
+                    "deepseek/deepseek-v3.2",
+                    "deepseek/deepseek-v3.2-exp",
+                    "x-ai/grok-4.1-fast",
+                    "x-ai/grok-4-fast",
+                    "x-ai/grok-code-fast-1"
+                ],
+                "default_model": "google/gemini-3.1-pro-preview"
             }
         }
         
@@ -109,7 +138,8 @@ class ConfigManager:
             "ai_providers": {
                 "anthropic": "",
                 "openai": "",
-                "google": ""
+                "google": "",
+                "openrouter": ""
             }
         }
         

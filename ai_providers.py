@@ -435,6 +435,112 @@ class GoogleGeminiProvider(AIProvider):
         return "Google Gemini"
 
 
+class OpenRouterProvider(AIProvider):
+    """OpenRouter AI provider - provides access to many AI models through a unified API."""
+    
+    def __init__(self, api_key: str, model: str = None):
+        self.api_key = api_key
+        self.model = model
+        self.base_url = "https://openrouter.ai/api/v1"
+    
+    def _build_request_payload(self, system_message: str, text: str) -> Dict[str, Any]:
+        """Build request payload for OpenRouter API."""
+        return {
+            "model": self.model,
+            "messages": [
+                {"role": "system", "content": system_message},
+                {"role": "user", "content": text}
+            ],
+            "max_tokens": 8000,
+            "temperature": 0.7
+        }
+    
+    def _extract_response_text(self, response_data: Dict[str, Any]) -> str:
+        """Extract translated text from OpenRouter response."""
+        if "choices" in response_data and len(response_data["choices"]) > 0:
+            return response_data["choices"][0]["message"]["content"]
+        raise ValueError("Unexpected OpenRouter API response format")
+    
+    def translate(self, text: str, target_language: str, 
+                  max_length: Optional[int] = None, 
+                  is_keywords: bool = False,
+                  seed: Optional[int] = None,
+                  refinement: Optional[str] = None) -> str:
+        """Translate using OpenRouter."""
+        _ = seed
+
+        # Log the request
+        log_ai_request("OpenRouter", self.model, text, target_language, max_length, is_keywords)
+        
+        try:
+            url = f"{self.base_url}/chat/completions"
+            
+            # OpenRouter requires specific headers for tracking
+            headers = {
+                "Authorization": f"Bearer {self.api_key}",
+                "Content-Type": "application/json"
+            }
+            
+            # Build system message
+            system_message = (
+                f"You are a professional translator specializing in App Store metadata translation. "
+                f"Translate the following text to {target_language}. "
+                f"Maintain the marketing tone and style of the original text."
+            )
+            
+            if is_keywords:
+                system_message += " For keywords, provide a comma-separated list and keep it concise."
+
+            if refinement:
+                system_message += f" Additional guidance: {refinement}"
+            
+            if max_length:
+                system_message += (
+                    f" CRITICAL: Your translation MUST be EXACTLY {max_length} characters or fewer "
+                    f"INCLUDING ALL SPACES, PUNCTUATION, AND SPECIAL CHARACTERS. Count every single "
+                    f"character including spaces between words. Do not add ellipsis (...) at the end. "
+                    f"Create a concise but meaningful translation that captures the essence of the "
+                    f"original message while staying within the character limit."
+                )
+            
+            data = self._build_request_payload(system_message, text)
+            
+            response = requests.post(url, headers=headers, json=data)
+            if not response.ok:
+                message = _extract_error_message(response)
+                raise ValueError(f"OpenRouter API error ({response.status_code}): {message}")
+            
+            response_data = response.json()
+            translated_text = self._extract_response_text(response_data)
+            
+            # Check character limit and retry if needed
+            if max_length and len(translated_text) > max_length:
+                log_character_limit_retry("OpenRouter", len(translated_text), max_length)
+                
+                # Try again with even stricter instructions
+                system_message += f" The text MUST be under {max_length} characters INCLUDING SPACES AND PUNCTUATION. Count every character. Prioritize brevity."
+                data = self._build_request_payload(system_message, text)
+                
+                response = requests.post(url, headers=headers, json=data)
+                if not response.ok:
+                    message = _extract_error_message(response)
+                    raise ValueError(f"OpenRouter API error ({response.status_code}): {message}")
+                response_data = response.json()
+                translated_text = self._extract_response_text(response_data)
+            
+            # Log successful response
+            log_ai_response("OpenRouter", translated_text, success=True)
+            return translated_text.strip()
+            
+        except Exception as e:
+            # Log error response
+            log_ai_response("OpenRouter", "", success=False, error=str(e))
+            raise Exception(f"OpenRouter translation failed: {str(e)}")
+    
+    def get_name(self) -> str:
+        return "OpenRouter"
+
+
 class AIProviderManager:
     """Manages multiple AI providers and handles provider selection."""
     
