@@ -2335,7 +2335,7 @@ class TranslateRCLI:
             
             # Get app info localizations
             print_info("Fetching app info localizations...")
-            app_info_id = self.asc_client.find_primary_app_info_id(app_id)
+            app_info_id = self.asc_client.find_primary_app_info_id(app_id, editable_only=False)
             app_info_localizations = []
             
             if app_info_id:

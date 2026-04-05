@@ -19,11 +19,14 @@ from utils import get_field_limit
 
 # Symbols explicitly allowed in Apple app names even though they are Unicode 'Symbol' category
 _ALLOWED_SYMBOL_CHARS = set('+-=<>|~^*%$#@&')
+# Keep script joiners used by some languages (e.g. Persian, Indic scripts).
+_ALLOWED_FORMAT_CHARS = {"\u200c", "\u200d"}
 
 
 def _strip_control_chars(text: str) -> str:
     """Remove characters that Apple's API rejects from name/subtitle fields.
-    Strips control characters, Unicode arrows, and other symbol characters.
+    Strips control characters and disallowed symbols while preserving
+    language-critical combining marks and joiners.
     """
     if not text:
         return text
@@ -33,7 +36,9 @@ def _strip_control_chars(text: str) -> str:
             result.append(' ')  # Convert whitespace control chars to space
             continue
         cat = unicodedata.category(char)
-        if cat.startswith(('L', 'N', 'P', 'Z')):
+        if cat.startswith(('L', 'N', 'P', 'Z', 'M')):
+            result.append(char)
+        elif cat == 'Cf' and char in _ALLOWED_FORMAT_CHARS:
             result.append(char)
         elif cat.startswith('S') and char in _ALLOWED_SYMBOL_CHARS:
             result.append(char)
@@ -413,17 +418,30 @@ class AppStoreConnectClient:
         
         return self._request("PATCH", f"appInfoLocalizations/{localization_id}", data=data)
     
-    def find_primary_app_info_id(self, app_id: str) -> Optional[str]:
+    def find_primary_app_info_id(self, app_id: str, editable_only: bool = True) -> Optional[str]:
         """
-        Find the primary app info ID for an app in an editable state.
-        Returns None if no editable appInfo exists (e.g. app is READY_FOR_SALE with no pending version).
+        Find primary app info ID.
+
+        When editable_only is True (default), returns an editable appInfo ID
+        or None if app has no editable appInfo.
+        When editable_only is False, falls back using a deterministic
+        read-oriented state priority instead of API response order.
         """
-        EDITABLE_STATES = {
+        EDITABLE_STATES = [
             "PREPARE_FOR_SUBMISSION",
-            "WAITING_FOR_REVIEW",
             "DEVELOPER_REJECTED",
             "REJECTED",
-        }
+            "METADATA_REJECTED",
+            "WAITING_FOR_REVIEW",
+        ]
+        READ_FALLBACK_STATES = [
+            "READY_FOR_SALE",
+            "PENDING_DEVELOPER_RELEASE",
+            "PROCESSING_FOR_DISTRIBUTION",
+            "IN_REVIEW",
+            "PENDING_APPLE_RELEASE",
+            "DEVELOPER_REMOVED_FROM_SALE",
+        ]
         try:
             app_infos = self.get_app_infos(app_id)
             infos = app_infos.get("data", [])
@@ -431,14 +449,34 @@ class AppStoreConnectClient:
             if not infos:
                 return None
 
-            # Prefer PREPARE_FOR_SUBMISSION, then any other editable state
-            for preferred in ["PREPARE_FOR_SUBMISSION", *EDITABLE_STATES]:
-                for info in infos:
-                    state = info.get("attributes", {}).get("appStoreState")
-                    if state == preferred:
+            normalized_infos = []
+            for info in infos:
+                info_id = info.get("id")
+                if not info_id:
+                    continue
+                attrs = info.get("attributes", {})
+                state = attrs.get("appStoreState") or attrs.get("appVersionState") or ""
+                normalized_infos.append({"id": str(info_id), "state": str(state)})
+
+            if not normalized_infos:
+                return None
+
+            for preferred in EDITABLE_STATES:
+                for info in normalized_infos:
+                    if info["state"] == preferred:
                         return info["id"]
 
-            return None
+            if editable_only:
+                return None
+
+            for preferred in READ_FALLBACK_STATES:
+                matched_ids = sorted(
+                    info["id"] for info in normalized_infos if info["state"] == preferred
+                )
+                if matched_ids:
+                    return matched_ids[0]
+
+            return sorted(info["id"] for info in normalized_infos)[0]
 
         except Exception:
             return None
