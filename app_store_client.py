@@ -10,8 +10,37 @@ import time
 import requests
 from typing import Dict, Any, Optional, List
 import random
+import re
+import unicodedata
 
 from utils import get_field_limit
+
+
+
+# Symbols explicitly allowed in Apple app names even though they are Unicode 'Symbol' category
+_ALLOWED_SYMBOL_CHARS = set('+-=<>|~^*%$#@&')
+
+
+def _strip_control_chars(text: str) -> str:
+    """Remove characters that Apple's API rejects from name/subtitle fields.
+    Strips control characters, Unicode arrows, and other symbol characters.
+    """
+    if not text:
+        return text
+    result = []
+    for char in text:
+        if char in ('\n', '\r', '\t'):
+            result.append(' ')  # Convert whitespace control chars to space
+            continue
+        cat = unicodedata.category(char)
+        if cat.startswith(('L', 'N', 'P', 'Z')):
+            result.append(char)
+        elif cat.startswith('S') and char in _ALLOWED_SYMBOL_CHARS:
+            result.append(char)
+        # Skip: other symbols (arrows, emoji, math), other control/format chars
+    cleaned = re.sub(r'\s+', ' ', ''.join(result)).strip()
+    return cleaned
+
 
 
 class AppStoreConnectClient:
@@ -76,6 +105,18 @@ class AppStoreConnectClient:
                     time.sleep(wait_time)
                     continue
                 else:
+                    try:
+                        error_body = response.json()
+                        errors = error_body.get("errors", [])
+                        if errors:
+                            detail = errors[0].get("detail", "")
+                            title = errors[0].get("title", "")
+                            raise requests.exceptions.HTTPError(
+                                f"{response.status_code} Client Error: {title} - {detail} for url: {response.url}",
+                                response=response
+                            )
+                    except (ValueError, AttributeError):
+                        pass
                     raise e
     
     def get_apps(self) -> Any:
@@ -87,12 +128,30 @@ class AppStoreConnectClient:
         return self._request("GET", f"apps/{app_id}")
     
     def get_latest_app_store_version(self, app_id: str) -> Optional[str]:
-        """Get the latest App Store version ID for an app."""
+        """Get the latest editable App Store version ID for an app.
+
+        Prefers versions in an editable state (PREPARE_FOR_SUBMISSION first,
+        then other editable states). Falls back to the first version if none
+        are in an editable state.
+        """
+        EDITABLE_STATES = [
+            "PREPARE_FOR_SUBMISSION",
+            "DEVELOPER_REJECTED",
+            "REJECTED",
+            "METADATA_REJECTED",
+            "WAITING_FOR_REVIEW",
+        ]
         response = self._request("GET", f"apps/{app_id}/appStoreVersions")
         versions = response.get("data", [])
-        if versions:
-            return versions[0]["id"]
-        return None
+        if not versions:
+            return None
+        for preferred in EDITABLE_STATES:
+            for version in versions:
+                state = version.get("attributes", {}).get("appVersionState") or \
+                        version.get("attributes", {}).get("appStoreState")
+                if state == preferred:
+                    return version["id"]
+        return versions[0]["id"]
     
     def get_app_store_version_localizations(self, version_id: str) -> Any:
         """Get all localizations for a specific App Store version."""
@@ -273,11 +332,11 @@ class AppStoreConnectClient:
         if name:
             if len(name) > 30:
                 name = name[:30]
-            attributes["name"] = name
+            attributes["name"] = _strip_control_chars(name)
         if subtitle:
             if len(subtitle) > 30:
                 subtitle = subtitle[:30]
-            attributes["subtitle"] = subtitle
+            attributes["subtitle"] = _strip_control_chars(subtitle)
         if privacy_policy_url:
             limit = get_field_limit("privacy_policy_url") or 255
             attributes["privacyPolicyUrl"] = privacy_policy_url[:limit]
@@ -322,12 +381,12 @@ class AppStoreConnectClient:
         if name is not None and name != current_attrs.get("name"):
             if len(name) > 30:
                 name = name[:30]
-            attributes["name"] = name
+            attributes["name"] = _strip_control_chars(name)
         
         if subtitle is not None and subtitle != current_attrs.get("subtitle"):
             if len(subtitle) > 30:
                 subtitle = subtitle[:30]
-            attributes["subtitle"] = subtitle
+            attributes["subtitle"] = _strip_control_chars(subtitle)
 
         if privacy_policy_url is not None and privacy_policy_url != current_attrs.get("privacyPolicyUrl"):
             limit = get_field_limit("privacy_policy_url") or len(privacy_policy_url)
@@ -356,23 +415,31 @@ class AppStoreConnectClient:
     
     def find_primary_app_info_id(self, app_id: str) -> Optional[str]:
         """
-        Find the primary app info ID for an app.
-        Prefers PREPARE_FOR_SUBMISSION state, falls back to first available.
+        Find the primary app info ID for an app in an editable state.
+        Returns None if no editable appInfo exists (e.g. app is READY_FOR_SALE with no pending version).
         """
+        EDITABLE_STATES = {
+            "PREPARE_FOR_SUBMISSION",
+            "WAITING_FOR_REVIEW",
+            "DEVELOPER_REJECTED",
+            "REJECTED",
+        }
         try:
             app_infos = self.get_app_infos(app_id)
             infos = app_infos.get("data", [])
-            
+
             if not infos:
                 return None
-            
-            for info in infos:
-                state = info.get("attributes", {}).get("appStoreState")
-                if state == "PREPARE_FOR_SUBMISSION":
-                    return info["id"]
-            
-            return infos[0]["id"]
-            
+
+            # Prefer PREPARE_FOR_SUBMISSION, then any other editable state
+            for preferred in ["PREPARE_FOR_SUBMISSION", *EDITABLE_STATES]:
+                for info in infos:
+                    state = info.get("attributes", {}).get("appStoreState")
+                    if state == preferred:
+                        return info["id"]
+
+            return None
+
         except Exception:
             return None
 

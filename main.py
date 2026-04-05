@@ -1824,8 +1824,7 @@ class TranslateRCLI:
                                             )
                                             
                                             app_name_success_count += 1
-                                            time.sleep(1)  # Rate limiting
-                                            
+                                            time.sleep(3)  # Rate limiting - appInfoLocalizations needs more time between writes
                                         except Exception as e:
                                             print_error(f"    Failed to update app name/subtitle for {language_name}: {str(e)}")
                                             continue
@@ -1841,7 +1840,7 @@ class TranslateRCLI:
                     except Exception as e:
                         print_warning(f"App name/subtitle translation failed: {str(e)}")
                 else:
-                    print_warning("Could not find app info ID - skipping app name/subtitle translation")
+                    print_warning("Could not find an editable app info (app may be in READY_FOR_SALE with no pending version) - skipping app name/subtitle translation")
             
             # Show final status
             final_localizations = self.asc_client.get_app_store_version_localizations(version_id)
