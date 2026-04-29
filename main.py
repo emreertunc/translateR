@@ -18,7 +18,7 @@ from typing import Optional, Dict, Any, List
 
 from config import ConfigManager
 from app_store_client import AppStoreConnectClient
-from ai_providers import AIProviderManager, AnthropicProvider, OpenAIProvider, GoogleGeminiProvider, OpenRouterProvider
+from ai_providers import AIProviderManager, AnthropicProvider, OpenAIProvider, GoogleGeminiProvider, OpenRouterProvider, NVIDIAProvider
 from ui import UI
 from workflows.iap_translate import run as iap_translate_run
 from workflows.subscription_translate import run as subscription_translate_run
@@ -76,6 +76,13 @@ class TranslateRCLI:
                 default_model = providers_config.get("openrouter", {}).get("default_model", "google/gemini-3.1-pro-preview")
                 openrouter = OpenRouterProvider(openrouter_key, default_model)
                 self.ai_manager.add_provider("openrouter", openrouter)
+            
+            # Setup NVIDIA
+            nvidia_key = self.config.get_ai_provider_key("nvidia")
+            if nvidia_key:
+                default_model = providers_config.get("nvidia", {}).get("default_model", "mistralai/mistral-large-3-675b-instruct-2512")
+                nvidia = NVIDIAProvider(nvidia_key, default_model)
+                self.ai_manager.add_provider("nvidia", nvidia)
                 
         except Exception as e:
             print_error(f"Error setting up AI providers: {e}")
@@ -143,16 +150,18 @@ class TranslateRCLI:
         print("Configure at least one AI provider for translations:")
         
         # AI providers setup
-        providers = ["anthropic", "openai", "google", "openrouter"]
+        providers = ["anthropic", "openai", "google", "openrouter", "nvidia"]
         provider_names = {
             "anthropic": "Anthropic Claude",
             "openai": "OpenAI GPT", 
             "google": "Google Gemini",
-            "openrouter": "OpenRouter"
+            "openrouter": "OpenRouter",
+            "nvidia": "NVIDIA NIM"
         }
         
         print("\nAvailable models for each provider:")
         print("- OpenRouter: Access to GPT, Claude, Gemini, Llama, Mistral and many more models")
+        print("- NVIDIA NIM: Free access to Mistral Large, Llama 3, and other NVIDIA-hosted models")
         print()
         
         for provider in providers:
@@ -161,6 +170,9 @@ class TranslateRCLI:
                 if provider == "openrouter":
                     print("\n  OpenRouter provides access to many AI models via a unified API.")
                     print("  Get your API key from: https://openrouter.ai/settings")
+                elif provider == "nvidia":
+                    print("\n  NVIDIA NIM provides high-performance inference for open models.")
+                    print("  Get your free API key from: https://build.nvidia.com/")
                 api_key = input(f"Enter {provider_names[provider]} API key: ").strip()
                 if api_key:
                     api_keys["ai_providers"][provider] = api_key
