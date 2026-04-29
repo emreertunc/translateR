@@ -84,7 +84,7 @@ class AppStoreConnectClient:
     def _request(self, method: str, endpoint: str, 
                  params: Optional[Dict[str, Any]] = None, 
                  data: Optional[Dict[str, Any]] = None,
-                 max_retries: int = 3) -> Any:
+                 max_retries: int = 20) -> Any:
         """Make authenticated request to App Store Connect API with retry logic."""
         headers = {
             "Authorization": f"Bearer {self._generate_token()}",
@@ -114,7 +114,7 @@ class AppStoreConnectClient:
                     except Exception:
                         pass
                         
-                    wait_time = (2 ** attempt) + random.uniform(0, 1)
+                    wait_time = 2
                     print(f"⚠️  API conflict detected{error_detail}, retrying in {wait_time:.1f}s (attempt {attempt + 1}/{max_retries + 1})...")
                     time.sleep(wait_time)
                     continue
