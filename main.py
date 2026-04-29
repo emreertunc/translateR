@@ -81,7 +81,7 @@ class TranslateRCLI:
             # Setup NVIDIA
             nvidia_key = self.config.get_ai_provider_key("nvidia")
             if nvidia_key:
-                default_model = providers_config.get("nvidia", {}).get("default_model", "mistralai/mistral-large-3-675b-instruct-2512")
+                default_model = providers_config.get("nvidia", {}).get("default_model", "moonshotai/kimi-k2-instruct-0905")
                 nvidia = NVIDIAProvider(nvidia_key, default_model)
                 self.ai_manager.add_provider("nvidia", nvidia)
                 

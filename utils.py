@@ -45,7 +45,7 @@ APP_STORE_LOCALES = {
     "ml-IN": "Malayalam",
     "mr-IN": "Marathi",
     "no": "Norwegian",
-    "fa": "Persian",
+    "or-IN": "Odia",
     "pl": "Polish",
     "pt-BR": "Portuguese (Brazil)",
     "pt-PT": "Portuguese (Portugal)",
@@ -53,7 +53,7 @@ APP_STORE_LOCALES = {
     "ro": "Romanian",
     "ru": "Russian",
     "sk": "Slovak",
-    "sl": "Slovenian",
+    "sl-SI": "Slovenian",
     "es-MX": "Spanish (Mexico)",
     "es-ES": "Spanish (Spain)",
     "sv": "Swedish",
@@ -62,7 +62,7 @@ APP_STORE_LOCALES = {
     "th": "Thai",
     "tr": "Turkish",
     "uk": "Ukrainian",
-    "ur": "Urdu",
+    "ur-PK": "Urdu",
     "vi": "Vietnamese"
 }
 
