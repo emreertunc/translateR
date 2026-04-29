@@ -11,6 +11,7 @@ import requests
 import os
 import time
 from ai_logger import log_ai_request, log_ai_response, log_character_limit_retry
+import threading
 
 
 def _extract_error_message(response: requests.Response) -> str:
@@ -549,6 +550,7 @@ class NVIDIAProvider(AIProvider):
         self.api_key = api_key
         self.model = model
         self.base_url = "https://integrate.api.nvidia.com/v1"
+        self._lock = threading.Lock()
     
     def _build_request_payload(self, system_message: str, text: str) -> Dict[str, Any]:
         """Build request payload for NVIDIA API (OpenAI compatible)."""
@@ -573,24 +575,25 @@ class NVIDIAProvider(AIProvider):
     def _post_with_retry(self, url: str, headers: Dict[str, str], data: Dict[str, Any]) -> requests.Response:
         """Post request to NVIDIA with exponential backoff for rate limits and server errors."""
         max_retries = 3
-        for attempt in range(max_retries + 1):
-            try:
-                response = requests.post(url, headers=headers, json=data)
-                # Retry on rate limit (429) or common server errors (5xx)
-                if response.status_code in [429, 500, 502, 503, 504] and attempt < max_retries:
-                    sleep_time = 2 ** (attempt + 1)
-                    print(f"  [NVIDIA] API error ({response.status_code}). Retrying in {sleep_time}s... (Attempt {attempt + 1}/{max_retries})")
-                    time.sleep(sleep_time)
-                    continue
-                return response
-            except requests.exceptions.RequestException as e:
-                if attempt < max_retries:
-                    sleep_time = 2 ** (attempt + 1)
-                    print(f"  [NVIDIA] Connection error. Retrying in {sleep_time}s... (Attempt {attempt + 1}/{max_retries})")
-                    time.sleep(sleep_time)
-                    continue
-                raise e
-        return requests.post(url, headers=headers, json=data) # Final attempt if loop finishes somehow
+        with self._lock:
+            for attempt in range(max_retries + 1):
+                try:
+                    response = requests.post(url, headers=headers, json=data)
+                    # Retry on rate limit (429) or common server errors (5xx)
+                    if response.status_code in [429, 500, 502, 503, 504] and attempt < max_retries:
+                        sleep_time = 2 ** (attempt + 1)
+                        print(f"  [NVIDIA] API error ({response.status_code}). Retrying in {sleep_time}s... (Attempt {attempt + 1}/{max_retries})")
+                        time.sleep(sleep_time)
+                        continue
+                    return response
+                except requests.exceptions.RequestException as e:
+                    if attempt < max_retries:
+                        sleep_time = 2 ** (attempt + 1)
+                        print(f"  [NVIDIA] Connection error. Retrying in {sleep_time}s... (Attempt {attempt + 1}/{max_retries})")
+                        time.sleep(sleep_time)
+                        continue
+                    raise e
+            return requests.post(url, headers=headers, json=data) # Final attempt if loop finishes somehow
 
     def translate(self, text: str, target_language: str, 
                   max_length: Optional[int] = None, 
