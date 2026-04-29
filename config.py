@@ -121,6 +121,20 @@ class ConfigManager:
                     "x-ai/grok-code-fast-1"
                 ],
                 "default_model": "google/gemini-3.1-pro-preview"
+            },
+            "nvidia": {
+                "name": "NVIDIA NIM",
+                "class": "NVIDIAProvider",
+                "models": [
+                    "mistralai/mistral-large-3-675b-instruct-2512",
+                    "mistralai/mistral-medium-3.5-128b",
+                    "moonshotai/kimi-k2-instruct-0905",
+                    "mistralai/ministral-14b-instruct-2512",
+                    "meta/llama-3.1-405b-instruct",
+                    "meta/llama-3.1-70b-instruct",
+                    "nvidia/llama-3.1-nemotron-70b-instruct"
+                ],
+                "default_model": "moonshotai/kimi-k2-instruct-0905"
             }
         }
         
@@ -139,7 +153,8 @@ class ConfigManager:
                 "anthropic": "",
                 "openai": "",
                 "google": "",
-                "openrouter": ""
+                "openrouter": "",
+                "nvidia": ""
             }
         }
         
