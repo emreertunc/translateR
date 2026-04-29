@@ -29,7 +29,8 @@ from utils import (
     detect_base_language, truncate_keywords, get_field_limit,
     find_matching_locale_entry,
     print_success, print_error, print_warning, print_info, format_progress,
-    export_existing_localizations
+    export_existing_localizations,
+    provider_model_info, parallel_map_locales
 )
 
 
@@ -695,10 +696,12 @@ class TranslateRCLI:
         print("11. 💳 Subscription Translations - Translate subscription metadata")
         print("12. 🏆 Game Center - Translate achievements, leaderboards, activities, and challenges")
         print("13. 🎉 In-App Events - Translate event localizations")
-        print("14. ❌ Exit")
+        print("14. 🔗 App Info URLs - Update Support, Marketing, and Privacy URLs")
+        print("15. 🆕 What's New - Translate and update release notes")
+        print("16. ❌ Exit")
         print()
         
-        choice = input("Select an option (1-14): ").strip()
+        choice = input("Select an option (1-16): ").strip()
         
         if choice == "1":
             return self.translation_mode()
@@ -727,10 +730,14 @@ class TranslateRCLI:
         elif choice == "13":
             return self.app_events_translate_mode()
         elif choice == "14":
+            return self.app_info_urls_mode()
+        elif choice == "15":
+            return self.whats_new_translate_mode()
+        elif choice == "16":
             print_info("Thank you for using TranslateR!")
             return False
         else:
-            print_error("Invalid choice. Please select 1-14.")
+            print_error("Invalid choice. Please select 1-16.")
             return True
 
     def iap_translate_mode(self):
@@ -2241,6 +2248,268 @@ class TranslateRCLI:
         except Exception as e:
             print_error(f"App name revert failed: {str(e)}")
         
+        input("\nPress Enter to continue...")
+        return True
+    
+    def app_info_urls_mode(self):
+        """Handle App Info URLs (Support, Marketing, & Privacy) update workflow."""
+        print_info("App Info URLs Mode - Update Support, Marketing, and Privacy URLs across all locales")
+        print()
+        
+        try:
+            # Get app ID
+            app_id = self._get_app_id()
+            if not app_id:
+                return True
+            
+            # Get latest editable version for Support/Marketing
+            version_id = self.asc_client.get_latest_app_store_version(app_id)
+            if not version_id:
+                print_error("No App Store version found for this app")
+                return True
+            
+            # Find primary app info ID for Privacy Policy
+            app_info_id = self.asc_client.find_primary_app_info_id(app_id)
+            if not app_info_id:
+                print_error("No editable App Info found for this app")
+                return True
+                
+            print_info(f"Using App Store Version ID: {version_id}")
+            print_info(f"Using App Info ID: {app_info_id}")
+            
+            # Fetch all localizations for both resources
+            version_locs = self.asc_client.get_app_store_version_localizations(version_id).get("data", [])
+            info_locs = self.asc_client.get_app_info_localizations(app_info_id).get("data", [])
+            
+            if not version_locs:
+                print_error("No version localizations found")
+                return True
+                
+            # Create a map for info localizations by locale for easy lookup
+            info_map = {loc.get("attributes", {}).get("locale"): loc for loc in info_locs}
+            
+            print(f"Found {len(version_locs)} version localizations and {len(info_locs)} info localizations.")
+            
+            print()
+            print("Action for Support URL:")
+            print("1. Keep as is")
+            print("2. Use template (e.g. https://example.com/support-{lang}.html)")
+            print("3. Set a specific URL for all")
+            support_choice = input("Select option (1-3) [1]: ").strip() or "1"
+            
+            support_url_to_set = None
+            if support_choice == "2":
+                support_url_to_set = input("Enter support URL template (use {lang} for base language, {locale} for full): ").strip()
+            elif support_choice == "3":
+                support_url_to_set = input("Enter support URL to set for all: ").strip()
+                
+            print()
+            print("Action for Marketing URL:")
+            print("1. Keep as is")
+            print("2. Remove from ALL locales")
+            print("3. Set a specific URL for all")
+            marketing_choice = input("Select option (1-3) [1]: ").strip() or "1"
+            
+            marketing_url_to_set = None
+            if marketing_choice == "2":
+                marketing_url_to_set = "" # Signal removal
+            elif marketing_choice == "3":
+                marketing_url_to_set = input("Enter marketing URL to set for all: ").strip()
+                
+            print()
+            print("Action for Privacy Policy URL:")
+            print("1. Keep as is")
+            print("2. Use template (e.g. https://example.com/privacy-{lang}.html)")
+            print("3. Set a specific URL for all")
+            privacy_choice = input("Select option (1-3) [1]: ").strip() or "1"
+            
+            privacy_url_to_set = None
+            if privacy_choice == "2":
+                privacy_url_to_set = input("Enter privacy URL template (use {lang} for base language, {locale} for full): ").strip()
+            elif privacy_choice == "3":
+                privacy_url_to_set = input("Enter privacy URL to set for all: ").strip()
+                
+            if support_choice == "1" and marketing_choice == "1" and privacy_choice == "1":
+                print_info("No changes selected. Returning to menu.")
+                return True
+                
+            print()
+            print_warning("This will update localizations in App Store Connect.")
+            confirm = input("Proceed with updates? (y/n): ").strip().lower()
+            if confirm not in ["y", "yes"]:
+                print_info("Update cancelled")
+                return True
+                
+            success_count = 0
+            for i, v_loc in enumerate(version_locs, 1):
+                locale = v_loc.get("attributes", {}).get("locale")
+                language_name = APP_STORE_LOCALES.get(locale, locale)
+                print(format_progress(i, len(version_locs), f"Updating {language_name}"))
+                
+                base_lang = locale.split("-")[0]
+                
+                # 1. Update Version Localization (Support/Marketing)
+                if support_choice != "1" or marketing_choice != "1":
+                    v_update = {}
+                    if support_choice == "2":
+                        v_update["support_url"] = support_url_to_set.replace("{lang}", base_lang).replace("{locale}", locale)
+                    elif support_choice == "3":
+                        v_update["support_url"] = support_url_to_set
+                        
+                    if marketing_choice != "1":
+                        v_update["marketing_url"] = marketing_url_to_set
+                        
+                    try:
+                        self.asc_client.update_app_store_version_localization(v_loc.get("id"), **v_update)
+                        print_success(f"  {language_name} version URLs updated")
+                    except Exception as e:
+                        print_error(f"  Failed to update version URLs for {language_name}: {e}")
+                
+                # 2. Update Info Localization (Privacy Policy)
+                if privacy_choice != "1":
+                    i_loc = info_map.get(locale)
+                    if i_loc:
+                        p_update = {}
+                        if privacy_choice == "2":
+                            p_update["privacy_policy_url"] = privacy_url_to_set.replace("{lang}", base_lang).replace("{locale}", locale)
+                        else:
+                            p_update["privacy_policy_url"] = privacy_url_to_set
+                            
+                        try:
+                            self.asc_client.update_app_info_localization(i_loc.get("id"), **p_update)
+                            print_success(f"  {language_name} privacy URL updated")
+                        except Exception as e:
+                            print_error(f"  Failed to update privacy URL for {language_name}: {e}")
+                    else:
+                        print_warning(f"  No info localization found for {language_name}, skipping privacy URL")
+                
+                success_count += 1
+                time.sleep(0.5)
+                    
+            print()
+            print_success(f"URL updates completed! {success_count}/{len(version_locs)} locales processed")
+            
+        except Exception as e:
+            print_error(f"URL update failed: {e}")
+            
+        input("\nPress Enter to continue...")
+        return True
+
+    def whats_new_translate_mode(self):
+        """Handle What's New translation and update workflow."""
+        print_info("What's New Translate Mode - Translate release notes to all locales")
+        print()
+        
+        try:
+            # Get app ID
+            app_id = self._get_app_id()
+            if not app_id:
+                return True
+                
+            # Get latest editable version
+            version_id = self.asc_client.get_latest_app_store_version(app_id)
+            if not version_id:
+                print_error("No editable App Store version found")
+                return True
+                
+            print_info(f"Using App Store Version ID: {version_id}")
+            
+            existing_localizations = self.asc_client.get_app_store_version_localizations(version_id)
+            localizations = existing_localizations.get("data", [])
+            if not localizations:
+                print_error("No version localizations found")
+                return True
+                
+            print(f"Found {len(localizations)} existing version localizations.")
+            
+            print()
+            print("Enter What's New text (English):")
+            print("(Press Enter on empty line to finish)")
+            lines = []
+            while True:
+                line = input()
+                if not line:
+                    break
+                lines.append(line)
+            
+            english_text = "\n".join(lines).strip()
+            if not english_text:
+                print_error("No text provided")
+                return True
+                
+            # Select AI provider
+            selected_provider_name = self._select_ai_provider()
+            if not selected_provider_name:
+                return True
+                
+            provider = self.ai_manager.get_provider(selected_provider_name)
+            if not provider:
+                print_error(f"Provider not found: {selected_provider_name}")
+                return True
+                
+            # Prepare for translation
+            provider_name, model = provider_model_info(provider)
+            print_info(f"AI provider: {provider_name}" + (f" (model: {model})" if model else ""))
+            
+            target_locales = [loc.get("attributes", {}).get("locale") for loc in localizations]
+            # Remove en-US if present as it's the source
+            if "en-US" in target_locales:
+                target_locales.remove("en-US")
+                
+            print_info(f"Translating to {len(target_locales)} locales...")
+            
+            def translate_task(locale):
+                lang_name = APP_STORE_LOCALES.get(locale, locale)
+                return provider.translate(
+                    text=english_text,
+                    target_language=lang_name,
+                    max_length=4000
+                )
+            
+            translated_results, translation_errors = parallel_map_locales(
+                target_locales=target_locales,
+                task_fn=translate_task,
+                progress_action="Translating"
+            )
+            
+            # Add English text for en-US
+            translated_results["en-US"] = english_text
+            
+            print()
+            print_warning("This will update What's New text in App Store Connect.")
+            confirm = input("Proceed with updates? (y/n): ").strip().lower()
+            if confirm not in ["y", "yes"]:
+                print_info("Update cancelled")
+                return True
+                
+            success_count = 0
+            for i, loc in enumerate(localizations, 1):
+                locale = loc.get("attributes", {}).get("locale")
+                language_name = APP_STORE_LOCALES.get(locale, locale)
+                
+                translated_text = translated_results.get(locale)
+                if not translated_text:
+                    continue
+                    
+                print(format_progress(i, len(localizations), f"Updating {language_name}"))
+                
+                try:
+                    self.asc_client.update_app_store_version_localization(
+                        localization_id=loc.get("id"),
+                        whats_new=translated_text
+                    )
+                    print_success(f"  {language_name} updated successfully")
+                    success_count += 1
+                    time.sleep(0.5)
+                except Exception as e:
+                    print_error(f"  Failed to update {language_name}: {e}")
+                    
+            print()
+            print_success(f"What's New updates completed! {success_count} locales updated")
+            
+        except Exception as e:
+            print_error(f"What's New translation failed: {e}")
+            
         input("\nPress Enter to continue...")
         return True
     

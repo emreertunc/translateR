@@ -105,8 +105,17 @@ class AppStoreConnectClient:
             except requests.exceptions.HTTPError as e:
                 if response.status_code == 409 and attempt < max_retries:
                     # Conflict error - retry with exponential backoff
+                    error_detail = ""
+                    try:
+                        error_body = response.json()
+                        errors = error_body.get("errors", [])
+                        if errors:
+                            error_detail = f" ({errors[0].get('detail', 'No detail')})"
+                    except Exception:
+                        pass
+                        
                     wait_time = (2 ** attempt) + random.uniform(0, 1)
-                    print(f"⚠️  API conflict detected, retrying in {wait_time:.1f}s (attempt {attempt + 1}/{max_retries + 1})...")
+                    print(f"⚠️  API conflict detected{error_detail}, retrying in {wait_time:.1f}s (attempt {attempt + 1}/{max_retries + 1})...")
                     time.sleep(wait_time)
                     continue
                 else:
@@ -169,7 +178,9 @@ class AppStoreConnectClient:
     def create_app_store_version_localization(self, version_id: str, locale: str,
                                             description: str, keywords: str = None,
                                             promotional_text: str = None,
-                                            whats_new: str = None) -> Any:
+                                            whats_new: str = None,
+                                            support_url: str = None,
+                                            marketing_url: str = None) -> Any:
         """
         Create a new localization for an App Store version.
         
@@ -180,6 +191,8 @@ class AppStoreConnectClient:
             keywords: App keywords (max 100 chars)
             promotional_text: Promotional text (max 170 chars)
             whats_new: What's new text (max 4000 chars)
+            support_url: Support URL
+            marketing_url: Marketing URL
         """
         data = {
             "data": {
@@ -207,6 +220,10 @@ class AppStoreConnectClient:
             attributes["promotionalText"] = promotional_text
         if whats_new:
             attributes["whatsNew"] = whats_new
+        if support_url:
+            attributes["supportUrl"] = support_url
+        if marketing_url:
+            attributes["marketingUrl"] = marketing_url
         
         return self._request("POST", "appStoreVersionLocalizations", data=data)
     
@@ -214,7 +231,9 @@ class AppStoreConnectClient:
                                             description: str = None,
                                             keywords: str = None,
                                             promotional_text: str = None,
-                                            whats_new: str = None) -> Any:
+                                            whats_new: str = None,
+                                            support_url: str = None,
+                                            marketing_url: str = None) -> Any:
         """
         Update an existing App Store version localization.
         
@@ -224,6 +243,8 @@ class AppStoreConnectClient:
             keywords: App keywords (max 100 chars)
             promotional_text: Promotional text (max 170 chars)
             whats_new: What's new text (max 4000 chars)
+            support_url: Support URL
+            marketing_url: Marketing URL
         """
         # First get current localization to check for changes
         try:
@@ -247,6 +268,16 @@ class AppStoreConnectClient:
                 if len(whats_new) > 4000:
                     whats_new = whats_new[:3997] + "..."
                 attributes["whatsNew"] = whats_new
+
+            if support_url is not None:
+                val = support_url if support_url != "" else None
+                if val != current_attrs.get("supportUrl"):
+                    attributes["supportUrl"] = val[:get_field_limit("support_url")] if val else None
+
+            if marketing_url is not None:
+                val = marketing_url if marketing_url != "" else None
+                if val != current_attrs.get("marketingUrl"):
+                    attributes["marketingUrl"] = val[:get_field_limit("marketing_url")] if val else None
             
             # Only make request if there are changes
             if attributes:
@@ -282,6 +313,10 @@ class AppStoreConnectClient:
                 if len(whats_new) > 4000:
                     whats_new = whats_new[:3997] + "..."
                 attributes["whatsNew"] = whats_new
+            if support_url is not None:
+                attributes["supportUrl"] = support_url if support_url != "" else None
+            if marketing_url is not None:
+                attributes["marketingUrl"] = marketing_url if marketing_url != "" else None
             
             return self._request("PATCH", f"appStoreVersionLocalizations/{localization_id}", data=data)
     
@@ -345,12 +380,6 @@ class AppStoreConnectClient:
         if privacy_policy_url:
             limit = get_field_limit("privacy_policy_url") or 255
             attributes["privacyPolicyUrl"] = privacy_policy_url[:limit]
-        if marketing_url:
-            limit = get_field_limit("marketing_url") or 255
-            attributes["marketingUrl"] = marketing_url[:limit]
-        if support_url:
-            limit = get_field_limit("support_url") or 255
-            attributes["supportUrl"] = support_url[:limit]
         
         return self._request("POST", "appInfoLocalizations", data=data)
     
@@ -396,14 +425,6 @@ class AppStoreConnectClient:
         if privacy_policy_url is not None and privacy_policy_url != current_attrs.get("privacyPolicyUrl"):
             limit = get_field_limit("privacy_policy_url") or len(privacy_policy_url)
             attributes["privacyPolicyUrl"] = privacy_policy_url[:limit]
-
-        if marketing_url is not None and marketing_url != current_attrs.get("marketingUrl"):
-            limit = get_field_limit("marketing_url") or len(marketing_url)
-            attributes["marketingUrl"] = marketing_url[:limit]
-
-        if support_url is not None and support_url != current_attrs.get("supportUrl"):
-            limit = get_field_limit("support_url") or len(support_url)
-            attributes["supportUrl"] = support_url[:limit]
         
         if not attributes:
             return current if current is not None else {"data": {"id": localization_id, "attributes": current_attrs}}
