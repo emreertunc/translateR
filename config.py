@@ -48,7 +48,7 @@ class ConfigManager:
     def _create_default_providers(self):
         """Create default providers configuration."""
         default_providers = {
-            "default_provider": "",
+            "default_provider": "openrouter",
             "prompt_refinement": "",
             "anthropic": {
                 "name": "Anthropic Claude",
@@ -118,9 +118,10 @@ class ConfigManager:
                     "deepseek/deepseek-v3.2-exp",
                     "x-ai/grok-4.1-fast",
                     "x-ai/grok-4-fast",
-                    "x-ai/grok-code-fast-1"
+                    "x-ai/grok-code-fast-1",
+                    "tencent/hy3-preview:free"
                 ],
-                "default_model": "google/gemini-3.1-pro-preview"
+                "default_model": "tencent/hy3-preview:free"
             },
             "nvidia": {
                 "name": "NVIDIA NIM",

@@ -196,21 +196,52 @@ def run(cli) -> bool:
             for loc in localizations
             if loc.get("id")
         }
-        available_targets = {
-            locale: name
-            for locale, name in APP_STORE_LOCALES.items()
-            if locale not in existing_locale_ids and locale != base_locale
-        }
+        
+        # Determine if we should translate missing, update existing, or both
+        print("\nTranslation options:")
+        print("1. Translate missing languages (New)")
+        print("2. Update existing languages (Update)")
+        print("3. Both (Full)")
+        translate_choice = input("Select option (1-3): ").strip()
+        
+        target_locales = []
+        if translate_choice == "1":
+            # Missing languages only
+            available_targets = {
+                locale: name
+                for locale, name in APP_STORE_LOCALES.items()
+                if locale not in existing_locale_ids and locale != base_locale
+            }
+            target_locales = choose_target_locales(
+                available_targets,
+                base_locale,
+                preferred_locales=app_locales,
+            )
+        elif translate_choice == "2":
+            # Existing languages only
+            available_targets = {
+                locale: APP_STORE_LOCALES.get(locale, locale)
+                for locale in existing_locale_ids
+                if locale != base_locale
+            }
+            target_locales = choose_target_locales(
+                available_targets,
+                base_locale,
+                preferred_locales=app_locales,
+            )
+        else:
+            # Both (All APP_STORE_LOCALES except base)
+            available_targets = {
+                locale: name
+                for locale, name in APP_STORE_LOCALES.items()
+                if locale != base_locale
+            }
+            target_locales = choose_target_locales(
+                available_targets,
+                base_locale,
+                preferred_locales=app_locales,
+            )
 
-        target_locales = choose_target_locales(
-            available_targets,
-            base_locale,
-            preferred_locales=app_locales,
-        )
-        if not target_locales and available_targets:
-            target_locales = list(available_targets.keys())
-            print_info("No locales selected. Using all missing locales.")
-        target_locales = [locale for locale in target_locales if locale != base_locale]
         if not target_locales:
             print_warning("No target languages selected; skipping")
             continue
