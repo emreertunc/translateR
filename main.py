@@ -48,33 +48,40 @@ class TranslateRCLI:
         """Initialize AI providers from configuration."""
         try:
             providers_config = self.config.load_providers()
+            instructions = self.config.load_instructions()
+            prompt_refinement = self.config.get_prompt_refinement()
+
+            def apply_prompt_defaults(provider):
+                provider.instructions = instructions
+                provider.refinement = prompt_refinement
+                return provider
             
             # Setup Anthropic
             anthropic_key = self.config.get_ai_provider_key("anthropic")
             if anthropic_key:
                 default_model = providers_config.get("anthropic", {}).get("default_model", "claude-sonnet-4-6")
-                anthropic = AnthropicProvider(anthropic_key, default_model)
+                anthropic = apply_prompt_defaults(AnthropicProvider(anthropic_key, default_model))
                 self.ai_manager.add_provider("anthropic", anthropic)
             
             # Setup OpenAI
             openai_key = self.config.get_ai_provider_key("openai")
             if openai_key:
                 default_model = providers_config.get("openai", {}).get("default_model", "gpt-5.2")
-                openai = OpenAIProvider(openai_key, default_model)
+                openai = apply_prompt_defaults(OpenAIProvider(openai_key, default_model))
                 self.ai_manager.add_provider("openai", openai)
             
             # Setup Google Gemini
             google_key = self.config.get_ai_provider_key("google")
             if google_key:
                 default_model = providers_config.get("google", {}).get("default_model", "gemini-3-flash-preview")
-                google = GoogleGeminiProvider(google_key, default_model)
+                google = apply_prompt_defaults(GoogleGeminiProvider(google_key, default_model))
                 self.ai_manager.add_provider("google", google)
             
             # Setup OpenRouter
             openrouter_key = self.config.get_ai_provider_key("openrouter")
             if openrouter_key:
                 default_model = providers_config.get("openrouter", {}).get("default_model", "google/gemini-3.1-pro-preview")
-                openrouter = OpenRouterProvider(openrouter_key, default_model)
+                openrouter = apply_prompt_defaults(OpenRouterProvider(openrouter_key, default_model))
                 self.ai_manager.add_provider("openrouter", openrouter)
                 
         except Exception as e:

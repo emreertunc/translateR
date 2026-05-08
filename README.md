@@ -211,7 +211,7 @@ After first run, config files are created in `config/`:
 
 **`api_keys.json`** - Your API keys and credentials  
 **`providers.json`** - AI provider settings  
-**`instructions.txt`** - Translation guidelines for AI
+**`instructions.md`** - Translation guidelines for AI
 **`saved_apps.json`** - Saved app IDs and labels
 
 ## Logging & Debugging

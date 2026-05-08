@@ -14,6 +14,7 @@ existing_localizations/
 # Generated config files
 config/providers.json
 config/instructions.txt
+config/instructions.md
 
 # Python
 __pycache__/

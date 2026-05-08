@@ -10,6 +10,7 @@ from typing import Optional, Dict, Any, List
 import requests
 import os
 from ai_logger import log_ai_request, log_ai_response, log_character_limit_retry
+from prompt_builder import build_translation_prompt
 
 
 def _extract_error_message(response: requests.Response) -> str:
@@ -41,7 +42,8 @@ class AIProvider(ABC):
                   max_length: Optional[int] = None, 
                   is_keywords: bool = False,
                   seed: Optional[int] = None,
-                  refinement: Optional[str] = None) -> str:
+                  refinement: Optional[str] = None,
+                  instructions: Optional[str] = None) -> str:
         """
         Translate text to target language.
         
@@ -52,6 +54,7 @@ class AIProvider(ABC):
             is_keywords: Whether the text is keywords (affects formatting)
             seed: Optional deterministic seed (provider support varies)
             refinement: Optional extra translation guidance
+            instructions: Base translation instructions loaded from config
             
         Returns:
             Translated text
@@ -75,12 +78,15 @@ class AnthropicProvider(AIProvider):
                   max_length: Optional[int] = None, 
                   is_keywords: bool = False,
                   seed: Optional[int] = None,
-                  refinement: Optional[str] = None) -> str:
+                  refinement: Optional[str] = None,
+                  instructions: Optional[str] = None) -> str:
         """Translate using Anthropic Claude."""
         _ = seed
 
         # Log the request
         log_ai_request("Anthropic Claude", self.model, text, target_language, max_length, is_keywords)
+        base_instructions = instructions if instructions is not None else getattr(self, "instructions", "")
+        effective_refinement = refinement if refinement is not None else getattr(self, "refinement", None)
         
         try:
             url = "https://api.anthropic.com/v1/messages"
@@ -90,27 +96,13 @@ class AnthropicProvider(AIProvider):
                 "anthropic-version": "2023-06-01"
             }
             
-            # Build system message
-            system_message = (
-                f"You are a professional translator specializing in App Store metadata translation. "
-                f"Translate the following text to {target_language}. "
-                f"Maintain the marketing tone and style of the original text."
+            system_message = build_translation_prompt(
+                base_instructions,
+                target_language,
+                max_length=max_length,
+                is_keywords=is_keywords,
+                refinement=effective_refinement,
             )
-            
-            if is_keywords:
-                system_message += " For keywords, provide a comma-separated list and keep it concise."
-
-            if refinement:
-                system_message += f" Additional guidance: {refinement}"
-            
-            if max_length:
-                system_message += (
-                    f" CRITICAL: Your translation MUST be EXACTLY {max_length} characters or fewer "
-                    f"INCLUDING ALL SPACES, PUNCTUATION, AND SPECIAL CHARACTERS. Count every single "
-                    f"character including spaces between words. Do not add ellipsis (...) at the end. "
-                    f"Create a concise but meaningful translation that captures the essence of the "
-                    f"original message while staying within the character limit."
-                )
             
             data = {
                 "model": self.model,
@@ -137,8 +129,14 @@ class AnthropicProvider(AIProvider):
             if max_length and len(translated_text) > max_length:
                 log_character_limit_retry("Anthropic Claude", len(translated_text), max_length)
                 
-                # Try again with even stricter instructions
-                system_message += f" The text MUST be under {max_length} characters INCLUDING SPACES AND PUNCTUATION. Count every character. Prioritize brevity."
+                system_message = build_translation_prompt(
+                    base_instructions,
+                    target_language,
+                    max_length=max_length,
+                    is_keywords=is_keywords,
+                    refinement=effective_refinement,
+                    retry_for_length=True,
+                )
                 data["system"] = system_message
                 
                 response = requests.post(url, headers=headers, json=data)
@@ -235,12 +233,15 @@ class OpenAIProvider(AIProvider):
                   max_length: Optional[int] = None, 
                   is_keywords: bool = False,
                   seed: Optional[int] = None,
-                  refinement: Optional[str] = None) -> str:
+                  refinement: Optional[str] = None,
+                  instructions: Optional[str] = None) -> str:
         """Translate using OpenAI GPT."""
         _ = seed
 
         # Log the request
         log_ai_request("OpenAI GPT", self.model, text, target_language, max_length, is_keywords)
+        base_instructions = instructions if instructions is not None else getattr(self, "instructions", "")
+        effective_refinement = refinement if refinement is not None else getattr(self, "refinement", None)
         
         try:
             url = (
@@ -253,27 +254,13 @@ class OpenAIProvider(AIProvider):
                 "Content-Type": "application/json"
             }
             
-            # Build system message
-            system_message = (
-                f"You are a professional translator specializing in App Store metadata translation. "
-                f"Translate the following text to {target_language}. "
-                f"Maintain the marketing tone and style of the original text."
+            system_message = build_translation_prompt(
+                base_instructions,
+                target_language,
+                max_length=max_length,
+                is_keywords=is_keywords,
+                refinement=effective_refinement,
             )
-            
-            if is_keywords:
-                system_message += " For keywords, provide a comma-separated list and keep it concise."
-
-            if refinement:
-                system_message += f" Additional guidance: {refinement}"
-            
-            if max_length:
-                system_message += (
-                    f" CRITICAL: Your translation MUST be EXACTLY {max_length} characters or fewer "
-                    f"INCLUDING ALL SPACES, PUNCTUATION, AND SPECIAL CHARACTERS. Count every single "
-                    f"character including spaces between words. Do not add ellipsis (...) at the end. "
-                    f"Create a concise but meaningful translation that captures the essence of the "
-                    f"original message while staying within the character limit."
-                )
             
             data = self._build_request_payload(system_message, text)
             
@@ -287,8 +274,14 @@ class OpenAIProvider(AIProvider):
             if max_length and len(translated_text) > max_length:
                 log_character_limit_retry("OpenAI GPT", len(translated_text), max_length)
                 
-                # Try again with even stricter instructions
-                system_message += f" The text MUST be under {max_length} characters INCLUDING SPACES AND PUNCTUATION. Count every character. Prioritize brevity."
+                system_message = build_translation_prompt(
+                    base_instructions,
+                    target_language,
+                    max_length=max_length,
+                    is_keywords=is_keywords,
+                    refinement=effective_refinement,
+                    retry_for_length=True,
+                )
                 data = self._build_request_payload(system_message, text)
                 
                 response = requests.post(url, headers=headers, json=data)
@@ -352,36 +345,24 @@ class GoogleGeminiProvider(AIProvider):
                   max_length: Optional[int] = None, 
                   is_keywords: bool = False,
                   seed: Optional[int] = None,
-                  refinement: Optional[str] = None) -> str:
+                  refinement: Optional[str] = None,
+                  instructions: Optional[str] = None) -> str:
         """Translate using Google Gemini."""
         _ = seed
 
         # Log the request
         log_ai_request("Google Gemini", self.model, text, target_language, max_length, is_keywords)
+        base_instructions = instructions if instructions is not None else getattr(self, "instructions", "")
+        effective_refinement = refinement if refinement is not None else getattr(self, "refinement", None)
         
         try:
-            # Build prompt
-            prompt = (
-                f"You are a professional translator specializing in App Store metadata translation. "
-                f"Translate the following text to {target_language}. "
-                f"Maintain the marketing tone and style of the original text."
+            prompt = build_translation_prompt(
+                base_instructions,
+                target_language,
+                max_length=max_length,
+                is_keywords=is_keywords,
+                refinement=effective_refinement,
             )
-            
-            if is_keywords:
-                prompt += " For keywords, provide a comma-separated list and keep it concise."
-
-            if refinement:
-                prompt += f" Additional guidance: {refinement}"
-            
-            if max_length:
-                prompt += (
-                    f" CRITICAL: Your translation MUST be EXACTLY {max_length} characters or fewer "
-                    f"INCLUDING ALL SPACES, PUNCTUATION, AND SPECIAL CHARACTERS. Count every single "
-                    f"character including spaces between words. Do not add ellipsis (...) at the end. "
-                    f"Create a concise but meaningful translation that captures the essence of the "
-                    f"original message while staying within the character limit."
-                )
-            
             prompt += f"\n\nText to translate: {text}"
             
             data = {
@@ -415,8 +396,15 @@ class GoogleGeminiProvider(AIProvider):
             if max_length and len(translated_text) > max_length:
                 log_character_limit_retry("Google Gemini", len(translated_text), max_length)
                 
-                # Try again with even stricter instructions
-                prompt += f" The text MUST be under {max_length} characters INCLUDING SPACES AND PUNCTUATION. Count every character. Prioritize brevity."
+                prompt = build_translation_prompt(
+                    base_instructions,
+                    target_language,
+                    max_length=max_length,
+                    is_keywords=is_keywords,
+                    refinement=effective_refinement,
+                    retry_for_length=True,
+                )
+                prompt += f"\n\nText to translate: {text}"
                 data["contents"][0]["parts"][0]["text"] = prompt
                 
                 response_data = self._post_generate_content(data)
@@ -465,12 +453,15 @@ class OpenRouterProvider(AIProvider):
                   max_length: Optional[int] = None, 
                   is_keywords: bool = False,
                   seed: Optional[int] = None,
-                  refinement: Optional[str] = None) -> str:
+                  refinement: Optional[str] = None,
+                  instructions: Optional[str] = None) -> str:
         """Translate using OpenRouter."""
         _ = seed
 
         # Log the request
         log_ai_request("OpenRouter", self.model, text, target_language, max_length, is_keywords)
+        base_instructions = instructions if instructions is not None else getattr(self, "instructions", "")
+        effective_refinement = refinement if refinement is not None else getattr(self, "refinement", None)
         
         try:
             url = f"{self.base_url}/chat/completions"
@@ -481,27 +472,13 @@ class OpenRouterProvider(AIProvider):
                 "Content-Type": "application/json"
             }
             
-            # Build system message
-            system_message = (
-                f"You are a professional translator specializing in App Store metadata translation. "
-                f"Translate the following text to {target_language}. "
-                f"Maintain the marketing tone and style of the original text."
+            system_message = build_translation_prompt(
+                base_instructions,
+                target_language,
+                max_length=max_length,
+                is_keywords=is_keywords,
+                refinement=effective_refinement,
             )
-            
-            if is_keywords:
-                system_message += " For keywords, provide a comma-separated list and keep it concise."
-
-            if refinement:
-                system_message += f" Additional guidance: {refinement}"
-            
-            if max_length:
-                system_message += (
-                    f" CRITICAL: Your translation MUST be EXACTLY {max_length} characters or fewer "
-                    f"INCLUDING ALL SPACES, PUNCTUATION, AND SPECIAL CHARACTERS. Count every single "
-                    f"character including spaces between words. Do not add ellipsis (...) at the end. "
-                    f"Create a concise but meaningful translation that captures the essence of the "
-                    f"original message while staying within the character limit."
-                )
             
             data = self._build_request_payload(system_message, text)
             
@@ -517,8 +494,14 @@ class OpenRouterProvider(AIProvider):
             if max_length and len(translated_text) > max_length:
                 log_character_limit_retry("OpenRouter", len(translated_text), max_length)
                 
-                # Try again with even stricter instructions
-                system_message += f" The text MUST be under {max_length} characters INCLUDING SPACES AND PUNCTUATION. Count every character. Prioritize brevity."
+                system_message = build_translation_prompt(
+                    base_instructions,
+                    target_language,
+                    max_length=max_length,
+                    is_keywords=is_keywords,
+                    refinement=effective_refinement,
+                    retry_for_length=True,
+                )
                 data = self._build_request_payload(system_message, text)
                 
                 response = requests.post(url, headers=headers, json=data)
