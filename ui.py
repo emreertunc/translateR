@@ -4,7 +4,55 @@ UI helper layer with non-TUI fallbacks.
 Item #4 (advanced TUI) is intentionally skipped.
 """
 
-from typing import List, Optional
+import builtins
+from contextlib import contextmanager
+from typing import Callable, Iterator, List, Optional
+
+
+class MainMenuRequested(BaseException):
+    """Raised when the user requests returning to the main menu."""
+
+
+class QuitRequested(BaseException):
+    """Raised when the user requests exiting the application."""
+
+
+MENU_COMMANDS = {"m", "menu", "main menu", "ana menu", "ana menü"}
+QUIT_COMMANDS = {"q", "quit", "exit"}
+NAVIGATION_FOOTER = "[m] main menu  [q] quit"
+
+
+def _normalize_command(value: str) -> str:
+    return " ".join(value.strip().lower().split())
+
+
+class NavigationInput:
+    """Input wrapper that recognizes global navigation commands."""
+
+    def __init__(self, raw_input: Callable[[str], str]):
+        self.raw_input = raw_input
+
+    def __call__(self, prompt: str = "") -> str:
+        print()
+        print("-" * len(NAVIGATION_FOOTER))
+        print(NAVIGATION_FOOTER)
+        value = self.raw_input(prompt)
+        command = _normalize_command(value)
+        if command in MENU_COMMANDS:
+            raise MainMenuRequested()
+        if command in QUIT_COMMANDS:
+            raise QuitRequested()
+        return value
+
+
+@contextmanager
+def global_navigation_input() -> Iterator[None]:
+    original_input = builtins.input
+    builtins.input = NavigationInput(original_input)
+    try:
+        yield
+    finally:
+        builtins.input = original_input
 
 
 class UI:

@@ -19,7 +19,7 @@ from typing import Optional, Dict, Any, List
 from config import ConfigManager
 from app_store_client import AppStoreConnectClient
 from ai_providers import AIProviderManager, AnthropicProvider, OpenAIProvider, GoogleGeminiProvider, OpenRouterProvider
-from ui import UI
+from ui import MainMenuRequested, QuitRequested, UI, global_navigation_input
 from workflows.iap_translate import run as iap_translate_run
 from workflows.subscription_translate import run as subscription_translate_run
 from workflows.game_center_localizations import run as game_center_localizations_run
@@ -2483,17 +2483,35 @@ class TranslateRCLI:
         self._check_for_updates_on_startup()
         
         # Main application loop
-        while True:
-            try:
-                if not self.show_main_menu():
+        with global_navigation_input():
+            while True:
+                try:
+                    if not self.show_main_menu():
+                        break
+                except MainMenuRequested:
+                    print()
+                    print_info("Returning to main menu...")
+                    continue
+                except QuitRequested:
+                    print()
+                    print_info("Exiting TranslateR...")
                     break
-            except KeyboardInterrupt:
-                print()
-                print_info("Exiting TranslateR...")
-                break
-            except Exception as e:
-                print_error(f"An error occurred: {e}")
-                input("Press Enter to continue...")
+                except KeyboardInterrupt:
+                    print()
+                    print_info("Exiting TranslateR...")
+                    break
+                except Exception as e:
+                    print_error(f"An error occurred: {e}")
+                    try:
+                        input("Press Enter to continue...")
+                    except MainMenuRequested:
+                        print()
+                        print_info("Returning to main menu...")
+                        continue
+                    except QuitRequested:
+                        print()
+                        print_info("Exiting TranslateR...")
+                        break
 
 
 def main():
