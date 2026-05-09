@@ -101,7 +101,10 @@ class AppStoreConnectClient:
             try:
                 response = requests.request(method, url, headers=headers, params=params, json=data)
                 response.raise_for_status()
-                return response.json()
+                # Return JSON only if response has content
+                if response.content:
+                    return response.json()
+                return {}
             except requests.exceptions.HTTPError as e:
                 if response.status_code == 409 and attempt < max_retries:
                     # Conflict error - retry with exponential backoff
@@ -704,6 +707,10 @@ class AppStoreConnectClient:
         }
         return self._request("PATCH", f"subscriptionLocalizations/{localization_id}", data=data, max_retries=0)
 
+    def delete_subscription_localization(self, localization_id: str) -> None:
+        """Delete a subscription localization."""
+        self._request("DELETE", f"subscriptionLocalizations/{localization_id}")
+
     def get_subscription_group_localizations(self, group_id: str) -> Any:
         """Get localizations for a subscription group."""
         return self._request("GET", f"subscriptionGroups/{group_id}/subscriptionGroupLocalizations")
@@ -790,6 +797,10 @@ class AppStoreConnectClient:
             }
         }
         return self._request("PATCH", f"subscriptionGroupLocalizations/{localization_id}", data=data, max_retries=0)
+
+    def delete_subscription_group_localization(self, localization_id: str) -> None:
+        """Delete a subscription group localization."""
+        self._request("DELETE", f"subscriptionGroupLocalizations/{localization_id}")
 
     # ----------------------
     # In-App Events helpers

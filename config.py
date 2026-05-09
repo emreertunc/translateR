@@ -119,9 +119,10 @@ class ConfigManager:
                     "x-ai/grok-4.1-fast",
                     "x-ai/grok-4-fast",
                     "x-ai/grok-code-fast-1",
+                    "inclusionai/ring-2.6-1t:free",
                     "tencent/hy3-preview:free"
                 ],
-                "default_model": "tencent/hy3-preview:free"
+                "default_model": "inclusionai/ring-2.6-1t:free"
             },
             "nvidia": {
                 "name": "NVIDIA NIM",

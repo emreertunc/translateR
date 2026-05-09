@@ -516,6 +516,9 @@ class GoogleGeminiProvider(AIProvider):
 class OpenRouterProvider(AIProvider):
     """OpenRouter AI provider - provides access to many AI models through a unified API."""
     
+    _lock = threading.Lock()
+    _request_times: List[float] = []
+
     def __init__(self, api_key: str, model: str = None):
         self.api_key = api_key
         self.model = model
@@ -546,6 +549,24 @@ class OpenRouterProvider(AIProvider):
         # Log the request
         log_ai_request("OpenRouter", self.model, text, target_language, max_length, is_keywords)
         
+        # Rate limiting: 50 RPM (Requests Per Minute)
+        with OpenRouterProvider._lock:
+            now = time.time()
+            # Keep only timestamps from the last 60 seconds
+            OpenRouterProvider._request_times = [t for t in OpenRouterProvider._request_times if now - t < 60]
+            
+            if len(OpenRouterProvider._request_times) >= 50:
+                # Calculate how long to wait until the oldest request falls out of the window
+                sleep_time = 60.0 - (now - OpenRouterProvider._request_times[0]) + 0.1
+                if sleep_time > 0:
+                    time.sleep(sleep_time)
+                
+                # Update 'now' and clean up again after sleeping
+                now = time.time()
+                OpenRouterProvider._request_times = [t for t in OpenRouterProvider._request_times if now - t < 60]
+            
+            OpenRouterProvider._request_times.append(time.time())
+
         try:
             url = f"{self.base_url}/chat/completions"
             

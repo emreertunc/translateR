@@ -342,7 +342,31 @@ def run(cli) -> bool:
                         )
                 success_count += 1
             except Exception as error:
-                if "409" in str(error):
+                error_str = str(error)
+                if "REJECTED" in error_str and localization_id:
+                    # Special case: Apple doesn't allow editing rejected localizations.
+                    # We must delete and recreate them.
+                    try:
+                        if scope == "sub":
+                            asc.delete_subscription_localization(localization_id)
+                            asc.create_subscription_localization(
+                                subscription_id=target.get("id"),
+                                locale=locale,
+                                name=translated_name,
+                                description=data.get("description"),
+                            )
+                        else:
+                            asc.delete_subscription_group_localization(localization_id)
+                            asc.create_subscription_group_localization(
+                                group_id=target.get("id"),
+                                locale=locale,
+                                name=translated_name,
+                                custom_app_name=data.get("customAppName"),
+                            )
+                        success_count += 1
+                    except Exception as retry_error:
+                        print_error(f"  ❌ Failed to recreate rejected {APP_STORE_LOCALES.get(locale, locale)}: {retry_error}")
+                elif "409" in error_str:
                     try:
                         if scope == "sub":
                             refreshed = asc.get_subscription_localizations(target.get("id"))
