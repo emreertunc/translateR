@@ -278,7 +278,8 @@ def run(cli):
             return True
             
         # 5. Export Prompt + JSON to File
-        prompt_file = "scratch/manual_translation.json"
+        prompt_file = "scratch/manual_prompt.txt"
+        result_file = "scratch/manual_result.json"
         
         constraints_str = "\n".join(sorted(list(set(constraints))))
         
@@ -287,58 +288,62 @@ def run(cli):
 IMPORTANT CONSTRAINTS:
 {constraints_str}
 
-Return ONLY a valid JSON object where keys are the locale codes ({', '.join(target_locales)}) and values are objects containing the translated fields.
+REQUIRED OUTPUT FORMAT:
+Return ONLY a valid JSON object. Do not include any conversational text or markdown blocks.
+The result should be a single JSON object where keys are the locale codes ({', '.join(target_locales)}) and values are objects containing the translated fields.
 DO NOT translate original_name fields, they are for your context.
 
 SOURCE DATA ({base_locale}):
+{json.dumps(source_data, indent=2, ensure_ascii=False)}
 """
-        
-        export_data = {
-            "instructions": prompt.strip().split("\n"),
-            "source_data": source_data
-        }
         
         try:
             import os
             os.makedirs("scratch", exist_ok=True)
+            
+            # Write prompt
             with open(prompt_file, "w", encoding="utf-8") as f:
-                json.dump(export_data, f, indent=2, ensure_ascii=False)
+                f.write(prompt)
+            
+            # Ensure result file is empty/ready
+            with open(result_file, "w", encoding="utf-8") as f:
+                f.write("")
             
             print("\n" + "="*60)
             print_success(f"Prompt and source data written to: {prompt_file}")
-            print("1. Open the file and copy the instructions and source data to your LLM.")
-            print("2. Once you have the translated JSON, REPLACING EVERYTHING in that file with ONLY the translated JSON.")
-            print("3. Save the file and press Enter here to continue.")
+            print(f"1. Open {prompt_file} and copy the content to your LLM.")
+            print(f"2. Once you have the translated JSON, paste it into: {result_file}")
+            print("3. Save the result file and press Enter here to continue.")
             print("="*60 + "\n")
             
         except Exception as e:
-            print_error(f"Failed to write prompt file: {e}")
+            print_error(f"Failed to write files: {e}")
             return True
             
-        # 6. Wait for user and Read File
-        input("Press Enter once you have saved the translated JSON in the file...")
+        # 6. Wait for user and Read Result File
+        input(f"Press Enter once you have saved the translated JSON in {result_file}...")
         
         try:
-            with open(prompt_file, "r", encoding="utf-8") as f:
+            with open(result_file, "r", encoding="utf-8") as f:
                 translated_json_text = f.read().strip()
                 
             if not translated_json_text:
-                print_error("The file is empty")
+                print_error(f"{result_file} is empty")
                 return True
                 
             translations = json.loads(translated_json_text)
             
-            # Basic validation: check if it's a dict and has at least one valid locale key
+            # Basic validation: check if it's a dict
             if not isinstance(translations, dict):
                 print_error("Invalid JSON format: Root must be an object")
                 return True
                 
         except json.JSONDecodeError as e:
-            print_error(f"Invalid JSON format in {prompt_file}: {e}")
-            print_info("Make sure the file contains ONLY the valid JSON object returned by the LLM.")
+            print_error(f"Invalid JSON format in {result_file}: {e}")
+            print_info("Make sure the file contains ONLY the valid JSON object returned by the LLM (no markdown blocks).")
             return True
         except Exception as e:
-            print_error(f"Failed to read translation file: {e}")
+            print_error(f"Failed to read result file: {e}")
             return True
             
         # 7. Update App Store Connect
@@ -354,101 +359,128 @@ SOURCE DATA ({base_locale}):
                 continue
                 
             lang_name = APP_STORE_LOCALES.get(locale, locale)
-            print()
             print(format_progress(i, total_locales, f"Processing {lang_name}"))
             
             try:
+                updated_anything = False
+                
+                # Check for both nested 'app_metadata' and top-level fields (in case LLM flattened it)
+                # This makes it much more robust against LLM variations
+                m = data.get("app_metadata", data) if isinstance(data, dict) else {}
+                
                 # Update Metadata
-                if "app_metadata" in data:
-                    m = data["app_metadata"]
-                    # Clean/Truncate
-                    name = m.get("name", "").strip()[:get_field_limit("name") or 30] if m.get("name") else None
-                    subtitle = m.get("subtitle", "").strip()[:get_field_limit("subtitle") or 30] if m.get("subtitle") else None
-                    desc = m.get("description", "").strip()[:get_field_limit("description") or 4000] if m.get("description") else None
-                    keys = truncate_keywords(m.get("keywords", ""), get_field_limit("keywords") or 100) if m.get("keywords") else None
-                    wn = m.get("whats_new", "").strip()[:get_field_limit("whats_new") or 4000] if m.get("whats_new") else None
-                    prom = m.get("promotional_text", "").strip()[:get_field_limit("promotional_text") or 170] if m.get("promotional_text") else None
-                    
-                    # Update Info
-                    if name or subtitle or m.get("privacy_policy_url"):
-                        loc = next((l for l in info_locs if l["attributes"]["locale"] == locale), None)
-                        if loc:
-                            cli.asc_client.update_app_info_localization(
-                                loc["id"], name=name, subtitle=subtitle,
-                                privacy_policy_url=m.get("privacy_policy_url"),
-                                marketing_url=m.get("marketing_url"),
-                                support_url=m.get("support_url")
-                            )
-                        else:
-                            cli.asc_client.create_app_info_localization(
-                                app_info_id, locale, name=name or "", subtitle=subtitle or ""
-                            )
-                        print_success(f"    ✅ App Info updated")
+                name = m.get("name") or m.get("appName")
+                subtitle = m.get("subtitle")
+                desc = m.get("description")
+                keys = m.get("keywords")
+                wn = m.get("whats_new") or m.get("whatsNew")
+                prom = m.get("promotional_text") or m.get("promotionalText")
+                
+                # Clean/Truncate
+                if name: name = name.strip()[:get_field_limit("name") or 30]
+                if subtitle: subtitle = subtitle.strip()[:get_field_limit("subtitle") or 30]
+                if desc: desc = desc.strip()[:get_field_limit("description") or 4000]
+                if keys: keys = truncate_keywords(keys, get_field_limit("keywords") or 100)
+                if wn: wn = wn.strip()[:get_field_limit("whats_new") or 4000]
+                if prom: prom = prom.strip()[:get_field_limit("promotional_text") or 170]
+                
+                # Update Info (Name, Subtitle, URLs)
+                if any([name, subtitle, m.get("privacy_policy_url"), m.get("marketing_url"), m.get("support_url")]):
+                    loc = find_matching_locale_entry(info_locs, locale)
+                    if loc:
+                        cli.asc_client.update_app_info_localization(
+                            loc["id"], name=name, subtitle=subtitle,
+                            privacy_policy_url=m.get("privacy_policy_url"),
+                            marketing_url=m.get("marketing_url"),
+                            support_url=m.get("support_url")
+                        )
+                    else:
+                        cli.asc_client.create_app_info_localization(
+                            app_info_id, locale, name=name or "", subtitle=subtitle or ""
+                        )
+                    print_success(f"    ✅ App Info updated ({locale})")
+                    updated_anything = True
 
-                    # Update Version
-                    if desc or keys or wn or prom:
-                        loc = next((l for l in version_locs if l["attributes"]["locale"] == locale), None)
-                        if loc:
-                            cli.asc_client.update_app_store_version_localization(
-                                loc["id"], description=desc, keywords=keys, whats_new=wn, promotional_text=prom
-                            )
-                        else:
-                            # Fallback description if missing for new creation
-                            if not desc:
-                                desc = (source_data.get("app_metadata", {}).get("description") or "App Description").strip()[:4000]
-                            cli.asc_client.create_app_store_version_localization(
-                                version_id, locale, description=desc, keywords=keys, whats_new=wn, promotional_text=prom
-                            )
-                        print_success(f"    ✅ App Version metadata updated")
+                # Update Version (Description, Keywords, What's New, Prom Text)
+                if any([desc, keys, wn, prom]):
+                    loc = find_matching_locale_entry(version_locs, locale)
+                    if loc:
+                        print_info(f"    ℹ️ Updating Version localization {loc['id']} for {locale}...")
+                        cli.asc_client.update_app_store_version_localization(
+                            loc["id"], description=desc, keywords=keys, whats_new=wn, promotional_text=prom
+                        )
+                    else:
+                        print_info(f"    ℹ️ Creating new Version localization for {locale}...")
+                        # Fallback description if missing for new creation
+                        if not desc:
+                            desc = (source_data.get("app_metadata", {}).get("description") or "App Description").strip()[:4000]
+                        cli.asc_client.create_app_store_version_localization(
+                            version_id, locale, description=desc, keywords=keys, whats_new=wn, promotional_text=prom
+                        )
+                    print_success(f"    ✅ App Version metadata updated ({locale})")
+                    updated_anything = True
 
                 # Update IAPs
-                if "iaps" in data:
-                    for iap_id, iap_m in data["iaps"].items():
+                iaps_to_update = data.get("iaps") if isinstance(data, dict) else None
+                if iaps_to_update:
+                    for iap_id, iap_m in iaps_to_update.items():
                         cli.asc_client.create_in_app_purchase_localization(
                             iap_id, locale, iap_m.get("name", ""), iap_m.get("description")
                         )
                     print_success(f"    ✅ IAP localizations updated")
+                    updated_anything = True
 
                 # Update Subscriptions
-                if "subscriptions" in data:
-                    s = data["subscriptions"]
-                    for gid, gm in s.get("groups", {}).items():
+                subs_to_update = data.get("subscriptions") if isinstance(data, dict) else None
+                if subs_to_update:
+                    for gid, gm in subs_to_update.get("groups", {}).items():
                         cli.asc_client.create_subscription_group_localization(
                             gid, locale, gm.get("name", ""), gm.get("custom_app_name")
                         )
-                    for sid, sm in s.get("items", {}).items():
+                    for sid, sm in subs_to_update.get("items", {}).items():
                         cli.asc_client.create_subscription_localization(
                             sid, locale, sm.get("name", ""), sm.get("description")
                         )
                     print_success(f"    ✅ Subscription localizations updated")
+                    updated_anything = True
 
                 # Update Game Center
-                if "game_center" in data:
-                    gc = data["game_center"]
-                    for aid, am in gc.get("achievements", {}).items():
+                gc_to_update = data.get("game_center") if isinstance(data, dict) else None
+                if gc_to_update:
+                    for aid, am in gc_to_update.get("achievements", {}).items():
                         cli.asc_client.create_game_center_achievement_localization(
                             aid, locale, am.get("name", ""), 
                             am.get("before_earned_description", ""), 
                             am.get("after_earned_description", "")
                         )
-                    for lid, lm in gc.get("leaderboards", {}).items():
+                    for lid, lm in gc_to_update.get("leaderboards", {}).items():
                         cli.asc_client.create_game_center_leaderboard_localization(
                             lid, locale, lm.get("name", ""), lm.get("description")
                         )
                     print_success(f"    ✅ Game Center localizations updated")
+                    updated_anything = True
 
                 # Update Events
-                if "events" in data:
-                    for eid, em in data["events"].items():
+                events_to_update = data.get("events") if isinstance(data, dict) else None
+                if events_to_update:
+                    for eid, em in events_to_update.items():
                         cli.asc_client.create_app_event_localization(
                             eid, locale, em.get("name", ""), 
                             em.get("short_description"), 
                             em.get("long_description")
                         )
                     print_success(f"    ✅ Event localizations updated")
+                    updated_anything = True
 
-                success_count += 1
+                if updated_anything:
+                    success_count += 1
+                else:
+                    print_warning(f"    ⚠️ No valid translatable fields found for {lang_name}")
+                
                 time.sleep(0.5)
+                
+            except Exception as e:
+                print_error(f"    ❌ Failed to update {lang_name}: {e}")
                 
             except Exception as e:
                 print_error(f"    ❌ Failed to update {lang_name}: {e}")
