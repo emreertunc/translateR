@@ -48,7 +48,7 @@ class ConfigManager:
     def _create_default_providers(self):
         """Create default providers configuration."""
         default_providers = {
-            "default_provider": "",
+            "default_provider": "openrouter",
             "prompt_refinement": "",
             "anthropic": {
                 "name": "Anthropic Claude",
@@ -118,9 +118,25 @@ class ConfigManager:
                     "deepseek/deepseek-v3.2-exp",
                     "x-ai/grok-4.1-fast",
                     "x-ai/grok-4-fast",
-                    "x-ai/grok-code-fast-1"
+                    "x-ai/grok-code-fast-1",
+                    "inclusionai/ring-2.6-1t:free",
+                    "tencent/hy3-preview:free"
                 ],
-                "default_model": "google/gemini-3.1-pro-preview"
+                "default_model": "inclusionai/ring-2.6-1t:free"
+            },
+            "nvidia": {
+                "name": "NVIDIA NIM",
+                "class": "NVIDIAProvider",
+                "models": [
+                    "mistralai/mistral-large-3-675b-instruct-2512",
+                    "mistralai/mistral-medium-3.5-128b",
+                    "moonshotai/kimi-k2-instruct-0905",
+                    "mistralai/ministral-14b-instruct-2512",
+                    "meta/llama-3.1-405b-instruct",
+                    "meta/llama-3.1-70b-instruct",
+                    "nvidia/llama-3.1-nemotron-70b-instruct"
+                ],
+                "default_model": "moonshotai/kimi-k2-instruct-0905"
             }
         }
         
@@ -139,7 +155,8 @@ class ConfigManager:
                 "anthropic": "",
                 "openai": "",
                 "google": "",
-                "openrouter": ""
+                "openrouter": "",
+                "nvidia": ""
             }
         }
         

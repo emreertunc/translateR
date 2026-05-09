@@ -4,6 +4,7 @@ config/saved_apps.json
 *.p8
 
 # AI development files (keep local only)
+scratch/
 CLAUDE.md
 .claude/
 logs/
