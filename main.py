@@ -25,6 +25,7 @@ from workflows.subscription_translate import run as subscription_translate_run
 from workflows.game_center_localizations import run as game_center_localizations_run
 from workflows.app_events_translate import run as app_events_translate_run
 from workflows.manual_translate import run as manual_translate_run
+from workflows.remove_localizations import run as remove_localizations_run
 from utils import (
     APP_STORE_LOCALES, FIELD_LIMITS, 
     detect_base_language, truncate_keywords, get_field_limit,
@@ -700,10 +701,11 @@ class TranslateRCLI:
         print("14. 🔗 App Info URLs - Update Support, Marketing, and Privacy URLs")
         print("15. 🆕 What's New - Translate and update release notes")
         print("16. ✍️  Manual Translation - Export/Import JSON for external translation")
-        print("17. ❌ Exit")
+        print("17. ❌ Remove Mode - Delete localizations across languages")
+        print("18. 🚪 Exit")
         print()
         
-        choice = input("Select an option (1-17): ").strip()
+        choice = input("Select an option (1-18): ").strip()
         
         if choice == "1":
             return self.translation_mode()
@@ -738,10 +740,12 @@ class TranslateRCLI:
         elif choice == "16":
             return self.manual_translation_mode()
         elif choice == "17":
+            return self.remove_localizations_mode()
+        elif choice == "18":
             print_info("Thank you for using TranslateR!")
             return False
         else:
-            print_error("Invalid choice. Please select 1-17.")
+            print_error("Invalid choice. Please select 1-18.")
             return True
 
     def iap_translate_mode(self):
@@ -763,6 +767,10 @@ class TranslateRCLI:
     def manual_translation_mode(self):
         """Manual translation mode wrapper."""
         return manual_translate_run(self)
+    
+    def remove_localizations_mode(self):
+        """Remove localizations mode wrapper."""
+        return remove_localizations_run(self)
     
     def translation_mode(self):
         """Handle translation workflow."""

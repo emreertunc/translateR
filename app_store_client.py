@@ -230,6 +230,10 @@ class AppStoreConnectClient:
         
         return self._request("POST", "appStoreVersionLocalizations", data=data)
     
+    def delete_app_store_version_localization(self, localization_id: str) -> None:
+        """Delete an App Store version localization."""
+        self._request("DELETE", f"appStoreVersionLocalizations/{localization_id}")
+    
     def update_app_store_version_localization(self, localization_id: str,
                                             description: str = None,
                                             keywords: str = None,
@@ -385,6 +389,10 @@ class AppStoreConnectClient:
             attributes["privacyPolicyUrl"] = privacy_policy_url[:limit]
         
         return self._request("POST", "appInfoLocalizations", data=data)
+    
+    def delete_app_info_localization(self, localization_id: str) -> None:
+        """Delete an app info localization."""
+        self._request("DELETE", f"appInfoLocalizations/{localization_id}")
     
     def update_app_info_localization(
         self,
@@ -606,6 +614,10 @@ class AppStoreConnectClient:
         }
         return self._request("PATCH", f"inAppPurchaseLocalizations/{localization_id}", data=data)
 
+    def delete_in_app_purchase_localization(self, localization_id: str) -> None:
+        """Delete an in-app purchase localization."""
+        self._request("DELETE", f"inAppPurchaseLocalizations/{localization_id}")
+
     # ----------------------
     # Subscription helpers
     # ----------------------
@@ -801,6 +813,10 @@ class AppStoreConnectClient:
     def delete_subscription_group_localization(self, localization_id: str) -> None:
         """Delete a subscription group localization."""
         self._request("DELETE", f"subscriptionGroupLocalizations/{localization_id}")
+
+    def delete_app_event_localization(self, localization_id: str) -> None:
+        """Delete an app event localization."""
+        self._request("DELETE", f"appEventLocalizations/{localization_id}")
 
     # ----------------------
     # In-App Events helpers
@@ -1070,6 +1086,10 @@ class AppStoreConnectClient:
         }
         return self._request("PATCH", f"v1/gameCenterAchievementLocalizations/{localization_id}", data=data, max_retries=0)
 
+    def delete_game_center_achievement_localization(self, localization_id: str) -> None:
+        """Delete a Game Center achievement localization."""
+        self._request("DELETE", f"v1/gameCenterAchievementLocalizations/{localization_id}")
+
     def create_game_center_leaderboard_localization(
         self,
         leaderboard_id: str,
@@ -1148,6 +1168,10 @@ class AppStoreConnectClient:
             }
         }
         return self._request("PATCH", f"v1/gameCenterLeaderboardLocalizations/{localization_id}", data=data, max_retries=0)
+
+    def delete_game_center_leaderboard_localization(self, localization_id: str) -> None:
+        """Delete a Game Center leaderboard localization."""
+        self._request("DELETE", f"v1/gameCenterLeaderboardLocalizations/{localization_id}")
 
     def create_game_center_activity_localization(
         self,
