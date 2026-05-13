@@ -33,9 +33,9 @@ class NavigationInput:
         self.raw_input = raw_input
 
     def __call__(self, prompt: str = "") -> str:
-        print()
-        print("-" * len(NAVIGATION_FOOTER))
-        print(NAVIGATION_FOOTER)
+        if prompt:
+            print(NAVIGATION_FOOTER)
+            print()
         value = self.raw_input(prompt)
         command = _normalize_command(value)
         if command in MENU_COMMANDS:
