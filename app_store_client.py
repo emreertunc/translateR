@@ -107,15 +107,35 @@ class AppStoreConnectClient:
                 return {}
             except requests.exceptions.HTTPError as e:
                 if response.status_code == 409 and attempt < max_retries:
-                    # Conflict error - retry with exponential backoff
+                    # Conflict error - check if it's a permanent conflict (e.g. already exists)
                     error_detail = ""
+                    is_permanent = False
                     try:
                         error_body = response.json()
                         errors = error_body.get("errors", [])
                         if errors:
-                            error_detail = f" ({errors[0].get('detail', 'No detail')})"
+                            detail = errors[0].get("detail", "No detail")
+                            error_detail = f" ({detail})"
+                            # If it says "already exists", retrying won't help
+                            if "already exists" in detail.lower() or "conflict" in detail.lower():
+                                is_permanent = True
                     except Exception:
                         pass
+                    
+                    if is_permanent:
+                        # Raise exception immediately so caller can handle it
+                        try:
+                            error_body = response.json()
+                            errors = error_body.get("errors", [])
+                            if errors:
+                                detail = errors[0].get("detail", "")
+                                title = errors[0].get("title", "")
+                                raise requests.exceptions.HTTPError(
+                                    f"409 Conflict: {title} - {detail}",
+                                    response=response
+                                )
+                        except Exception:
+                            raise e
                         
                     wait_time = 2
                     print(f"⚠️  API conflict detected{error_detail}, retrying in {wait_time:.1f}s (attempt {attempt + 1}/{max_retries + 1})...")
@@ -170,9 +190,10 @@ class AppStoreConnectClient:
                     return version["id"]
         return versions[0]["id"]
     
-    def get_app_store_version_localizations(self, version_id: str) -> Any:
+    def get_app_store_version_localizations(self, version_id: str, limit: int = 200) -> Any:
         """Get all localizations for a specific App Store version."""
-        return self._request("GET", f"appStoreVersions/{version_id}/appStoreVersionLocalizations")
+        params = {"limit": limit}
+        return self._request("GET", f"appStoreVersions/{version_id}/appStoreVersionLocalizations", params=params)
     
     def get_app_store_version_localization(self, localization_id: str) -> Any:
         """Get a specific localization by ID."""
@@ -331,9 +352,10 @@ class AppStoreConnectClient:
         """Get app infos for an app."""
         return self._request("GET", f"apps/{app_id}/appInfos")
     
-    def get_app_info_localizations(self, app_info_id: str) -> Any:
+    def get_app_info_localizations(self, app_info_id: str, limit: int = 200) -> Any:
         """Get localizations for a specific app info."""
-        return self._request("GET", f"appInfos/{app_info_id}/appInfoLocalizations")
+        params = {"limit": limit}
+        return self._request("GET", f"appInfos/{app_info_id}/appInfoLocalizations", params=params)
     
     def get_app_info_localization(self, localization_id: str) -> Any:
         """Get a specific app info localization by ID."""
@@ -522,9 +544,10 @@ class AppStoreConnectClient:
         params = {"limit": max(1, min(limit, 200))}
         return self._request("GET", f"apps/{app_id}/inAppPurchasesV2", params=params)
 
-    def get_in_app_purchase_localizations(self, iap_id: str) -> Any:
+    def get_in_app_purchase_localizations(self, iap_id: str, limit: int = 200) -> Any:
         """Get localizations for a specific in-app purchase."""
-        return self._request("GET", f"v2/inAppPurchases/{iap_id}/inAppPurchaseLocalizations")
+        params = {"limit": limit}
+        return self._request("GET", f"v2/inAppPurchases/{iap_id}/inAppPurchaseLocalizations", params=params)
 
     def get_in_app_purchase_localization(self, localization_id: str) -> Any:
         """Get a single in-app purchase localization."""
@@ -632,9 +655,10 @@ class AppStoreConnectClient:
         params = {"limit": max(1, min(limit, 200))}
         return self._request("GET", f"subscriptionGroups/{group_id}/subscriptions", params=params)
 
-    def get_subscription_localizations(self, subscription_id: str) -> Any:
+    def get_subscription_localizations(self, subscription_id: str, limit: int = 200) -> Any:
         """Get localizations for a specific subscription."""
-        return self._request("GET", f"subscriptions/{subscription_id}/subscriptionLocalizations")
+        params = {"limit": limit}
+        return self._request("GET", f"subscriptions/{subscription_id}/subscriptionLocalizations", params=params)
 
     def create_subscription_localization(
         self,
@@ -723,9 +747,10 @@ class AppStoreConnectClient:
         """Delete a subscription localization."""
         self._request("DELETE", f"subscriptionLocalizations/{localization_id}")
 
-    def get_subscription_group_localizations(self, group_id: str) -> Any:
+    def get_subscription_group_localizations(self, group_id: str, limit: int = 200) -> Any:
         """Get localizations for a subscription group."""
-        return self._request("GET", f"subscriptionGroups/{group_id}/subscriptionGroupLocalizations")
+        params = {"limit": limit}
+        return self._request("GET", f"subscriptionGroups/{group_id}/subscriptionGroupLocalizations", params=params)
 
     def create_subscription_group_localization(
         self,
