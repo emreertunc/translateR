@@ -24,6 +24,7 @@ from workflows.iap_translate import run as iap_translate_run
 from workflows.subscription_translate import run as subscription_translate_run
 from workflows.game_center_localizations import run as game_center_localizations_run
 from workflows.app_events_translate import run as app_events_translate_run
+from workflows.helpers import display_locale_table
 from utils import (
     APP_STORE_LOCALES, FIELD_LIMITS, 
     detect_base_language, truncate_keywords, get_field_limit,
@@ -815,13 +816,7 @@ class TranslateRCLI:
                 print_warning("All supported languages are already localized")
                 return True
             
-            # Display available languages in chunks
-            languages_list = list(available_targets.items())
-            for i, (locale, name) in enumerate(languages_list[:20], 1):  # Show first 20
-                print(f"{i:2d}. {locale:8} - {name}")
-            
-            if len(languages_list) > 20:
-                print(f"... and {len(languages_list) - 20} more languages")
+            display_locale_table(available_targets)
             
             print()
             print("Enter target language locales (comma-separated, e.g., 'de-DE,fr-FR,es-ES'):")
@@ -1588,13 +1583,8 @@ class TranslateRCLI:
             else:  # choice == '2'
                 print()
                 print("Missing languages:")
-                missing_list = list(missing_locales)
-                for i, locale in enumerate(missing_list[:20], 1):
-                    language_name = APP_STORE_LOCALES[locale]
-                    print(f"{i:2d}. {locale:8} - {language_name}")
-                
-                if len(missing_list) > 20:
-                    print(f"... and {len(missing_list) - 20} more")
+                missing_list = {locale: APP_STORE_LOCALES[locale] for locale in missing_locales}
+                display_locale_table(missing_list)
                 
                 print()
                 print("Enter language locales (comma-separated, e.g., 'de-DE,fr-FR,es-ES'):")
@@ -1641,11 +1631,7 @@ class TranslateRCLI:
             # Confirm before starting
             print()
             print_info(f"Ready to set up {len(target_locales)} new localizations:")
-            for locale in target_locales[:10]:  # Show first 10
-                language_name = APP_STORE_LOCALES[locale]
-                print(f"  • {locale} ({language_name})")
-            if len(target_locales) > 10:
-                print(f"  ... and {len(target_locales) - 10} more")
+            display_locale_table({locale: APP_STORE_LOCALES[locale] for locale in target_locales})
             
             print()
             confirm = input("Proceed with full setup? (y/n): ").strip().lower()
@@ -1943,9 +1929,7 @@ class TranslateRCLI:
             
             print()
             print("Available target languages:")
-            print(", ".join([f"{locale} ({APP_STORE_LOCALES[locale]})" for locale in available_targets[:10]]))
-            if len(available_targets) > 10:
-                print(f"... and {len(available_targets) - 10} more")
+            display_locale_table({locale: APP_STORE_LOCALES[locale] for locale in available_targets})
             
             print()
             print("Translation options:")
@@ -2388,19 +2372,15 @@ class TranslateRCLI:
             print_info(f"File saved to: {export_path}")
             
             # Show summary
-            locales_summary = []
-            for loc in all_localizations[:5]:
+            locales_summary = {}
+            for loc in all_localizations:
                 locale = loc["attributes"].get("locale", "Unknown")
                 language_name = APP_STORE_LOCALES.get(locale, "Unknown")
-                locales_summary.append(f"{locale} ({language_name})")
-            
-            if len(all_localizations) > 5:
-                locales_summary.append(f"... and {len(all_localizations) - 5} more")
+                locales_summary[locale] = language_name
             
             print()
             print_info("Exported languages:")
-            for lang in locales_summary:
-                print(f"  • {lang}")
+            display_locale_table(locales_summary)
             
             self._maybe_save_app_id(app_id, app_name=app_name)
             

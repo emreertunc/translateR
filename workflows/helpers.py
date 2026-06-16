@@ -5,6 +5,17 @@ from typing import Dict, Iterable, List, Optional, Tuple
 from utils import print_error, print_info
 
 
+def display_locale_table(locales: Dict[str, str]) -> None:
+    """Print all locale options in two columns."""
+    items = list(locales.items())
+    for i in range(0, len(items), 2):
+        left = items[i]
+        right = items[i + 1] if i + 1 < len(items) else None
+        left_txt = f"{left[0]:8} - {left[1]}"
+        right_txt = f"{right[0]:8} - {right[1]}" if right else ""
+        print(f"{left_txt:30} {right_txt}")
+
+
 def pick_provider(cli, prompt: str = "Select AI provider") -> Tuple[Optional[object], Optional[str]]:
     """Select AI provider with optional configured default."""
     manager = cli.ai_manager
@@ -58,13 +69,7 @@ def choose_target_locales(
         return []
 
     print("Available target locales:")
-    items = list(available_targets.items())
-    for i in range(0, len(items), 2):
-        left = items[i]
-        right = items[i + 1] if i + 1 < len(items) else None
-        left_txt = f"{left[0]:8} - {left[1]}"
-        right_txt = f"{right[0]:8} - {right[1]}" if right else ""
-        print(f"{left_txt:30} {right_txt}")
+    display_locale_table(available_targets)
 
     default_locales = sorted(loc for loc in preferred_set if loc in available_targets)
     raw = input("Enter target locales (comma-separated, 'all' for every locale): ").strip()
