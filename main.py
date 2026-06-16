@@ -67,21 +67,21 @@ class TranslateRCLI:
             # Setup OpenAI
             openai_key = self.config.get_ai_provider_key("openai")
             if openai_key:
-                default_model = providers_config.get("openai", {}).get("default_model", "gpt-5.2")
+                default_model = providers_config.get("openai", {}).get("default_model", "gpt-5.5")
                 openai = apply_prompt_defaults(OpenAIProvider(openai_key, default_model))
                 self.ai_manager.add_provider("openai", openai)
             
             # Setup Google Gemini
             google_key = self.config.get_ai_provider_key("google")
             if google_key:
-                default_model = providers_config.get("google", {}).get("default_model", "gemini-3-flash-preview")
+                default_model = providers_config.get("google", {}).get("default_model", "gemini-3.5-flash")
                 google = apply_prompt_defaults(GoogleGeminiProvider(google_key, default_model))
                 self.ai_manager.add_provider("google", google)
             
             # Setup OpenRouter
             openrouter_key = self.config.get_ai_provider_key("openrouter")
             if openrouter_key:
-                default_model = providers_config.get("openrouter", {}).get("default_model", "google/gemini-3.1-pro-preview")
+                default_model = providers_config.get("openrouter", {}).get("default_model", "google/gemini-3.5-flash")
                 openrouter = apply_prompt_defaults(OpenRouterProvider(openrouter_key, default_model))
                 self.ai_manager.add_provider("openrouter", openrouter)
                 

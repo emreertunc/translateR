@@ -54,15 +54,12 @@ class ConfigManager:
                 "name": "Anthropic Claude",
                 "class": "AnthropicProvider",
                 "models": [
+                    "claude-fable-5",
+                    "claude-opus-4-8",
                     "claude-sonnet-4-6",
-                    "claude-opus-4-6",
-                    "claude-opus-4-5-20251101",
-                    "claude-sonnet-4-5-20250929",
                     "claude-haiku-4-5-20251001",
-                    "claude-opus-4-1-20250805",
-                    "claude-sonnet-4-20250514",
-                    "claude-opus-4-20250514",
-                    "claude-3-haiku-20240307"
+                    "claude-opus-4-6",
+                    "claude-sonnet-4-5-20250929"
                 ],
                 "default_model": "claude-sonnet-4-6"
             },
@@ -70,45 +67,47 @@ class ConfigManager:
                 "name": "OpenAI GPT",
                 "class": "OpenAIProvider", 
                 "models": [
-                    "gpt-5.2",
-                    "gpt-5.1",
-                    "gpt-5",
-                    "gpt-5-2025-08-07",
-                    "gpt-5-mini",
-                    "gpt-5-mini-2025-08-07",
-                    "gpt-5-nano",
-                    "gpt-5-nano-2025-08-07",
+                    "gpt-5.5",
+                    "gpt-5.4",
+                    "gpt-5.4-mini",
+                    "gpt-5.4-nano",
                 ],
-                "default_model": "gpt-5.2"
+                "default_model": "gpt-5.5"
             },
             "google": {
                 "name": "Google Gemini",
                 "class": "GoogleGeminiProvider",
                 "models": [
+                    "gemini-3.5-flash",
                     "gemini-3.1-pro-preview",
                     "gemini-3-flash-preview",
+                    "gemini-3.1-flash-lite",
                     "gemini-2.5-pro",
-                    "gemini-2.5-flash",
-                    "gemini-2.5-flash-lite"
+                    "gemini-2.5-flash"
                 ],
-                "default_model": "gemini-3-flash-preview"
+                "default_model": "gemini-3.5-flash"
             },
             "openrouter": {
                 "name": "OpenRouter",
                 "class": "OpenRouterProvider",
                 "models": [
-                    "openai/gpt-5.4",
+                    "openai/gpt-5.5-pro",
+                    "openai/gpt-5.5",
                     "openai/gpt-5.4-pro",
-                    "openai/gpt-5.3-codex",
-                    "openai/gpt-4o-mini",
-                    "openai/gpt-5.2",
-                    "openai/gpt-5-nano",
-                    "openai/gpt-oss-120b",
-                    "anthropic/claude-haiku-4.5",
-                    "anthropic/claude-opus-4.6",
+                    "openai/gpt-5.4",
+                    "openai/gpt-5.4-mini",
+                    "openai/gpt-5.4-nano",
+                    "anthropic/claude-fable-5",
+                    "anthropic/claude-opus-4.8",
+                    "anthropic/claude-opus-4.8-fast",
                     "anthropic/claude-sonnet-4.6",
-                    "google/gemini-3.1-flash-lite-preview",
+                    "anthropic/claude-haiku-4.5",
+                    "google/gemini-3.5-flash",
                     "google/gemini-3.1-pro-preview",
+                    "google/gemini-3.1-pro-preview-customtools",
+                    "google/gemini-3.1-flash-lite",
+                    "google/gemini-3.1-flash-lite-preview",
+                    "openai/gpt-oss-120b",
                     "meta-llama/llama-4-maverick",
                     "meta-llama/llama-guard-4-12b",
                     "mistralai/mistral-small-creative",
@@ -120,7 +119,7 @@ class ConfigManager:
                     "x-ai/grok-4-fast",
                     "x-ai/grok-code-fast-1"
                 ],
-                "default_model": "google/gemini-3.1-pro-preview"
+                "default_model": "google/gemini-3.5-flash"
             }
         }
         

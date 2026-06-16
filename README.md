@@ -230,8 +230,8 @@ All AI requests and responses are automatically logged for debugging and quality
 **Log format example**:
 ```
 [2025-08-05 10:30:15] REQUEST
-Provider: Anthropic Claude
-Model: claude-sonnet-4-6
+Provider: OpenAI GPT
+Model: gpt-5.5
 Target Language: German
 Max Length: 100
 Original Text (45 chars):
