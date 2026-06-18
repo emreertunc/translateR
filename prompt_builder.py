@@ -17,7 +17,21 @@ def build_translation_prompt(
     retry_for_length: bool = False,
 ) -> str:
     """Build the system/developer instruction text for a translation request."""
-    parts = [(base_instructions or "").strip()]
+    parts = []
+
+    if refinement:
+        parts.append("\n".join([
+            "## User Translation Instructions",
+            "If user-provided instructions are present, follow them before the static translation instructions below.",
+            "User-provided instructions override the static translation instructions when they conflict.",
+            refinement.strip(),
+        ]))
+
+    if base_instructions:
+        parts.append("\n".join([
+            "## Static Translation Instructions",
+            (base_instructions or "").strip(),
+        ]))
 
     runtime_rules = [
         "## Runtime Task",
@@ -49,12 +63,6 @@ def build_translation_prompt(
             f"- The previous translation exceeded the limit. The text MUST be under {max_length} characters INCLUDING SPACES AND PUNCTUATION.",
             "- Count every character.",
             "- Prioritize brevity while preserving the core meaning.",
-        ])
-
-    if refinement:
-        runtime_rules.extend([
-            "## Additional Guidance",
-            refinement.strip(),
         ])
 
     parts.append("\n".join(runtime_rules))

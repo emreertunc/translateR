@@ -24,7 +24,7 @@ from workflows.iap_translate import run as iap_translate_run
 from workflows.subscription_translate import run as subscription_translate_run
 from workflows.game_center_localizations import run as game_center_localizations_run
 from workflows.app_events_translate import run as app_events_translate_run
-from workflows.helpers import display_locale_table
+from workflows.helpers import display_locale_table, prompt_translation_guidance
 from utils import (
     APP_STORE_LOCALES, FIELD_LIMITS, 
     detect_base_language, truncate_keywords, get_field_limit,
@@ -87,6 +87,17 @@ class TranslateRCLI:
                 
         except Exception as e:
             print_error(f"Error setting up AI providers: {e}")
+
+    def _apply_translation_refinement(self, provider, refinement: str) -> None:
+        """Apply run-specific translation guidance to a provider."""
+        if provider:
+            provider.refinement = refinement
+
+    def _prompt_translation_refinement(self, provider) -> str:
+        """Prompt for optional run-specific translation guidance and apply it."""
+        refinement = prompt_translation_guidance(self.config.get_prompt_refinement() or "")
+        self._apply_translation_refinement(provider, refinement)
+        return refinement
     
     def setup_app_store_client(self):
         """Initialize App Store Connect client."""
@@ -847,6 +858,7 @@ class TranslateRCLI:
             if not provider:
                 print_error(f"Provider not found: {selected_provider}")
                 return True
+            translation_refinement = self._prompt_translation_refinement(provider)
             
             # Start translation process
             print()
@@ -946,6 +958,7 @@ class TranslateRCLI:
                             selected_provider = next_provider
                             provider = self.ai_manager.get_provider(selected_provider)
                             if provider:
+                                self._apply_translation_refinement(provider, translation_refinement)
                                 print_info(f"Retrying {language_name} with provider: {selected_provider}")
                                 continue
                             print_error(f"Provider not found: {selected_provider}")
@@ -958,7 +971,7 @@ class TranslateRCLI:
             if include_app_info:
                 print()
                 print_info("Now translating app name & subtitle...")
-                self._translate_app_info(app_id, target_locales, provider, selected_provider)
+                self._translate_app_info(app_id, target_locales, provider, selected_provider, translation_refinement)
             
             if success_count > 0:
                 self._maybe_save_app_id(app_id)
@@ -975,6 +988,7 @@ class TranslateRCLI:
         target_locales: List[str],
         provider,
         selected_provider: Optional[str] = None,
+        translation_refinement: str = "",
     ):
         """Helper method to translate app name and subtitle for given locales."""
         try:
@@ -1098,6 +1112,7 @@ class TranslateRCLI:
                             selected_provider = next_provider
                             provider = self.ai_manager.get_provider(selected_provider)
                             if provider:
+                                self._apply_translation_refinement(provider, translation_refinement)
                                 print_info(f"Retrying {language_name} app info with provider: {selected_provider}")
                                 continue
                             print_error(f"Provider not found: {selected_provider}")
@@ -1259,6 +1274,7 @@ class TranslateRCLI:
             if not provider:
                 print_error(f"Provider not found: {selected_provider}")
                 return True
+            translation_refinement = self._prompt_translation_refinement(provider)
             
             # Show summary before starting
             print()
@@ -1364,6 +1380,7 @@ class TranslateRCLI:
                             selected_provider = next_provider
                             provider = self.ai_manager.get_provider(selected_provider)
                             if provider:
+                                self._apply_translation_refinement(provider, translation_refinement)
                                 print_info(f"Retrying {language_name} with provider: {selected_provider}")
                                 continue
                             print_error(f"Provider not found: {selected_provider}")
@@ -1627,6 +1644,7 @@ class TranslateRCLI:
             if not provider:
                 print_error(f"Provider not found: {selected_provider}")
                 return True
+            translation_refinement = self._prompt_translation_refinement(provider)
             
             # Confirm before starting
             print()
@@ -1739,6 +1757,7 @@ class TranslateRCLI:
                             selected_provider = next_provider
                             provider = self.ai_manager.get_provider(selected_provider)
                             if provider:
+                                self._apply_translation_refinement(provider, translation_refinement)
                                 print_info(f"Retrying {language_name} with provider: {selected_provider}")
                                 continue
                             print_error(f"Provider not found: {selected_provider}")
@@ -1979,6 +1998,7 @@ class TranslateRCLI:
             if not provider:
                 print_error(f"Provider not found: {selected_provider}")
                 return True
+            translation_refinement = self._prompt_translation_refinement(provider)
             
             print()
             print_info(f"Starting app name & subtitle translation for {len(target_locales)} languages...")
@@ -2067,6 +2087,7 @@ class TranslateRCLI:
                             selected_provider = next_provider
                             provider = self.ai_manager.get_provider(selected_provider)
                             if provider:
+                                self._apply_translation_refinement(provider, translation_refinement)
                                 print_info(f"Retrying {language_name} with provider: {selected_provider}")
                                 continue
                             print_error(f"Provider not found: {selected_provider}")

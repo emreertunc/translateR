@@ -20,7 +20,7 @@ from utils import (
     print_warning,
     provider_model_info,
 )
-from workflows.helpers import choose_target_locales, get_app_locales, pick_provider
+from workflows.helpers import choose_target_locales, get_app_locales, pick_provider, prompt_translation_guidance
 
 
 RESOURCE_TITLES = {
@@ -385,7 +385,7 @@ def run(cli) -> bool:
         return True
 
     seed = getattr(cli, "session_seed", None)
-    refine_phrase = cli.config.get_prompt_refinement() or ""
+    refine_phrase = prompt_translation_guidance(cli.config.get_prompt_refinement() or "")
     provider_name, provider_model = provider_model_info(provider, provider_key)
     if seed is not None:
         print_info(f"AI provider: {provider_name} (model: {provider_model or 'n/a'}, seed: {seed})")

@@ -211,8 +211,10 @@ After first run, config files are created in `config/`:
 
 **`api_keys.json`** - Your API keys and credentials  
 **`providers.json`** - AI provider settings  
-**`instructions.md`** - Translation guidelines for AI
+**`instructions.md`** - Translation guidelines for AI  
 **`saved_apps.json`** - Saved app IDs and labels
+
+Before each translation run, TranslateR can ask for one-off instructions such as brand terms to preserve or wording to avoid. These run-specific instructions are added before the static `instructions.md` rules and take priority when they conflict.
 
 ## Logging & Debugging
 

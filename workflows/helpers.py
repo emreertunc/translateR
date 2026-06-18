@@ -2,7 +2,7 @@
 
 from typing import Dict, Iterable, List, Optional, Tuple
 
-from utils import print_error, print_info
+from utils import print_error, print_info, print_warning
 
 
 def display_locale_table(locales: Dict[str, str]) -> None:
@@ -14,6 +14,39 @@ def display_locale_table(locales: Dict[str, str]) -> None:
         left_txt = f"{left[0]:8} - {left[1]}"
         right_txt = f"{right[0]:8} - {right[1]}" if right else ""
         print(f"{left_txt:30} {right_txt}")
+
+
+def combine_prompt_refinements(user_guidance: str, global_guidance: str = "") -> str:
+    """Combine run-specific and global guidance with user guidance first."""
+    parts: List[str] = []
+    user_guidance = (user_guidance or "").strip()
+    global_guidance = (global_guidance or "").strip()
+
+    if user_guidance:
+        parts.extend([
+            "User-provided instructions for this translation run. These override the static translation instructions if they conflict:",
+            user_guidance,
+        ])
+
+    if global_guidance:
+        if user_guidance:
+            parts.append("Global configured guidance, lower priority than the user-provided run instructions:")
+        parts.append(global_guidance)
+
+    return "\n".join(parts).strip()
+
+
+def prompt_translation_guidance(global_guidance: str = "") -> str:
+    """Ask for optional run-specific translation guidance."""
+    raw = input("Add specific instructions for this translation run? (y/n): ").strip().lower()
+    if raw not in ("y", "yes"):
+        return combine_prompt_refinements("", global_guidance)
+
+    user_guidance = input("Enter translation instructions: ").strip()
+    if not user_guidance:
+        print_warning("No specific instructions entered; using default translation instructions.")
+
+    return combine_prompt_refinements(user_guidance, global_guidance)
 
 
 def pick_provider(cli, prompt: str = "Select AI provider") -> Tuple[Optional[object], Optional[str]]:

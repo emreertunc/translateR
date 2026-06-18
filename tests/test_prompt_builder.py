@@ -23,6 +23,11 @@ class PromptBuilderTests(unittest.TestCase):
         self.assertIn("MUST be EXACTLY 100 characters or fewer", prompt)
         self.assertIn("INCLUDE ALL SPACES, PUNCTUATION, AND SPECIAL CHARACTERS", prompt)
         self.assertIn("Keep brand names unchanged.", prompt)
+        self.assertLess(
+            prompt.index("Keep brand names unchanged."),
+            prompt.index("Keep translations natural."),
+        )
+        self.assertIn("override the static translation instructions", prompt)
 
     def test_retry_prompt_adds_stricter_limit_rule(self):
         prompt = build_translation_prompt(
