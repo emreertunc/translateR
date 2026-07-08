@@ -381,7 +381,7 @@ class GoogleGeminiProvider(AIProvider):
         return ["v1", "v1beta"]
 
     def _post_generate_content(self, data: Dict[str, Any]) -> Dict[str, Any]:
-        """Call Gemini API with version fallback for model availability differences."""
+        """Call Gemini API with version fallback and retry on transient errors."""
         last_error: Optional[str] = None
 
         for version in self._candidate_api_versions():
@@ -389,17 +389,31 @@ class GoogleGeminiProvider(AIProvider):
                 f"https://generativelanguage.googleapis.com/{version}/"
                 f"models/{self.model}:generateContent?key={self.api_key}"
             )
-            response = requests.post(url, headers={"Content-Type": "application/json"}, json=data)
-            if response.ok:
-                return response.json()
-
-            # Model may exist only in the other API version; retry there on 404.
-            if response.status_code == 404:
-                last_error = f"{version}: {_extract_error_message(response)}"
-                continue
-
-            message = _extract_error_message(response)
-            raise ValueError(f"Google Gemini API error ({response.status_code}, {version}): {message}")
+            
+            max_attempts = 5
+            for attempt in range(max_attempts):
+                try:
+                    response = requests.post(url, headers={"Content-Type": "application/json"}, json=data, timeout=30)
+                    if response.ok:
+                        return response.json()
+                    
+                    if response.status_code in [429, 503] and attempt < max_attempts - 1:
+                        sleep_time = (2 ** attempt) + 1
+                        time.sleep(sleep_time)
+                        continue
+                    
+                    if response.status_code == 404:
+                        last_error = f"{version}: {_extract_error_message(response)}"
+                        break
+                    
+                    message = _extract_error_message(response)
+                    raise ValueError(f"Google Gemini API error ({response.status_code}, {version}): {message}")
+                except (requests.exceptions.RequestException, ValueError) as e:
+                    if attempt < max_attempts - 1:
+                        sleep_time = (2 ** attempt) + 1
+                        time.sleep(sleep_time)
+                        continue
+                    raise e
 
         raise ValueError(f"Google Gemini model unavailable: {self.model} ({last_error or 'no details'})")
     
@@ -463,12 +477,19 @@ class GoogleGeminiProvider(AIProvider):
                 
                 content = candidate.get("content", {})
                 parts = content.get("parts", [])
-                if parts and parts[0].get("text"):
+                translated_text = None
+                for part in parts:
+                    if part.get("text") and not part.get("thought"):
+                        translated_text = part["text"]
+                        break
+                if not translated_text and parts and parts[0].get("text"):
                     translated_text = parts[0]["text"]
-                elif candidate.get("finishReason") == "MAX_TOKENS":
-                    raise ValueError("Translation too long - exceeded token limit. Try shorter text.")
-                else:
-                    raise ValueError(f"Unexpected Gemini response (finishReason: {candidate.get('finishReason')})")
+                
+                if not translated_text:
+                    if candidate.get("finishReason") == "MAX_TOKENS":
+                        raise ValueError("Translation too long - exceeded token limit. Try shorter text.")
+                    else:
+                        raise ValueError(f"Unexpected Gemini response (finishReason: {candidate.get('finishReason')})")
             else:
                 raise ValueError("Unexpected API response format: No candidates found")
             

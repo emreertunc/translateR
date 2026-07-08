@@ -32,7 +32,8 @@ from utils import (
     find_matching_locale_entry,
     print_success, print_error, print_warning, print_info, format_progress,
     export_existing_localizations,
-    provider_model_info, parallel_map_locales
+    provider_model_info, parallel_map_locales,
+    BUG_FIXES_TRANSLATIONS
 )
 
 
@@ -2438,58 +2439,70 @@ class TranslateRCLI:
                 
             print(f"Found {len(localizations)} existing version localizations.")
             
-            print()
-            print("Enter What's New text (English):")
-            print("(Press Enter on empty line to finish)")
-            lines = []
-            while True:
-                line = input()
-                if not line:
-                    break
-                lines.append(line)
+            use_preset = input("Use the default 'Bug fixes' translation preset? (y/n): ").strip().lower()
             
-            english_text = "\n".join(lines).strip()
-            if not english_text:
-                print_error("No text provided")
-                return True
+            if use_preset in ["y", "yes"]:
+                english_text = "Bug fixes"
+                translated_results = BUG_FIXES_TRANSLATIONS.copy()
+                translated_results["en-US"] = english_text
+                # Ensure all locales present in app localizations are mapped
+                for loc in localizations:
+                    loc_code = loc.get("attributes", {}).get("locale")
+                    if loc_code not in translated_results:
+                        translated_results[loc_code] = english_text
+            else:
+                print()
+                print("Enter What's New text (English):")
+                print("(Press Enter on empty line to finish)")
+                lines = []
+                while True:
+                    line = input()
+                    if not line:
+                        break
+                    lines.append(line)
                 
-            # Select AI provider
-            selected_provider_name = self._select_ai_provider()
-            if not selected_provider_name:
-                return True
+                english_text = "\n".join(lines).strip()
+                if not english_text:
+                    print_error("No text provided")
+                    return True
+                    
+                # Select AI provider
+                selected_provider_name = self._select_ai_provider()
+                if not selected_provider_name:
+                    return True
+                    
+                provider = self.ai_manager.get_provider(selected_provider_name)
+                if not provider:
+                    print_error(f"Provider not found: {selected_provider_name}")
+                    return True
+                    
+                # Prepare for translation
+                provider_name, model = provider_model_info(provider)
+                print_info(f"AI provider: {provider_name}" + (f" (model: {model})" if model else ""))
                 
-            provider = self.ai_manager.get_provider(selected_provider_name)
-            if not provider:
-                print_error(f"Provider not found: {selected_provider_name}")
-                return True
+                target_locales = [loc.get("attributes", {}).get("locale") for loc in localizations]
+                # Remove en-US if present as it's the source
+                if "en-US" in target_locales:
+                    target_locales.remove("en-US")
+                    
+                print_info(f"Translating to {len(target_locales)} locales...")
                 
-            # Prepare for translation
-            provider_name, model = provider_model_info(provider)
-            print_info(f"AI provider: {provider_name}" + (f" (model: {model})" if model else ""))
-            
-            target_locales = [loc.get("attributes", {}).get("locale") for loc in localizations]
-            # Remove en-US if present as it's the source
-            if "en-US" in target_locales:
-                target_locales.remove("en-US")
+                def translate_task(locale):
+                    lang_name = APP_STORE_LOCALES.get(locale, locale)
+                    return provider.translate(
+                        text=english_text,
+                        target_language=lang_name,
+                        max_length=4000
+                    )
                 
-            print_info(f"Translating to {len(target_locales)} locales...")
-            
-            def translate_task(locale):
-                lang_name = APP_STORE_LOCALES.get(locale, locale)
-                return provider.translate(
-                    text=english_text,
-                    target_language=lang_name,
-                    max_length=4000
+                translated_results, translation_errors = parallel_map_locales(
+                    target_locales=target_locales,
+                    task_fn=translate_task,
+                    progress_action="Translating"
                 )
-            
-            translated_results, translation_errors = parallel_map_locales(
-                target_locales=target_locales,
-                task_fn=translate_task,
-                progress_action="Translating"
-            )
-            
-            # Add English text for en-US
-            translated_results["en-US"] = english_text
+                
+                # Add English text for en-US
+                translated_results["en-US"] = english_text
             
             print()
             print_warning("This will update What's New text in App Store Connect.")

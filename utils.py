@@ -66,6 +66,61 @@ APP_STORE_LOCALES = {
     "vi": "Vietnamese"
 }
 
+# Pre-translated "Bug fixes" translations for all App Store locales
+BUG_FIXES_TRANSLATIONS = {
+    "ar-SA": "إصلاح الأخطاء",
+    "bn-BD": "ত্রুটি সংশোধন",
+    "ca": "Correcció d'errors",
+    "zh-Hans": "错误修复",
+    "zh-Hant": "錯誤修復",
+    "hr": "Ispravke pogrešaka",
+    "cs": "Opravy chyb",
+    "da": "Fejlrettelser",
+    "nl-NL": "Bugfixes",
+    "en-AU": "Bug fixes",
+    "en-CA": "Bug fixes",
+    "en-GB": "Bug fixes",
+    "en-US": "Bug fixes",
+    "fi": "Virhekorjauksia",
+    "fr-FR": "Corrections de bogues",
+    "fr-CA": "Corrections de bogues",
+    "de-DE": "Fehlerbehebungen",
+    "el": "Διορθώσεις σφαλμάτων",
+    "gu-IN": "ભૂલો સુધારણા",
+    "he": "תיקوني באגים",
+    "hi": "त्रुटि सुधार",
+    "hu": "Hibajavítások",
+    "id": "Perbaikan bug",
+    "it": "Correzione di bug",
+    "ja": "バグ修正",
+    "kn-IN": "ದೋಷ ಪರಿಹಾರಗಳು",
+    "ko": "버그 수정",
+    "ms": "Pembetulan pepijat",
+    "ml-IN": "ബഗ് പരിഹාරങ്ങൾ",
+    "mr-IN": "त्रुटी सुधारणा",
+    "no": "Feilrettinger",
+    "or-IN": "ତ୍ରୁଟି ସଂଶୋଧନ",
+    "pa-IN": "ਬੱਗ ਫਿਕਸ",
+    "pl": "Poprawki błędów",
+    "pt-BR": "Correções de bugs",
+    "pt-PT": "Correções de bugs",
+    "ro": "Corecții de erori",
+    "ru": "Исправление ошибок",
+    "sk": "Opravy chýb",
+    "sl-SI": "Popravki napak",
+    "es-ES": "Corrección de errores",
+    "es-MX": "Corrección de errores",
+    "sv": "Felrättningar",
+    "ta-IN": "பிழை திருத்தங்கள்",
+    "te-IN": "బగ్ పరిష్కారాలు",
+    "th": "แก้ไขข้อผิดพลาด",
+    "tr": "Hata düzeltmeleri",
+    "uk": "Виправлення помилок",
+    "ur-PK": "خرابیوں کا حل",
+    "vi": "Sửa lỗi"
+}
+
+
 # Character limits for App Store fields
 FIELD_LIMITS = {
     "name": 30,
