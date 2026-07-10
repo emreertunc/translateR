@@ -2,7 +2,13 @@ import io
 import unittest
 from unittest.mock import patch
 
-from workflows.helpers import combine_prompt_refinements, display_locale_table, prompt_translation_guidance
+from workflows.helpers import (
+    choose_target_locales,
+    combine_prompt_refinements,
+    confirm_locale_write,
+    display_locale_table,
+    prompt_translation_guidance,
+)
 
 
 class WorkflowHelperTests(unittest.TestCase):
@@ -52,6 +58,41 @@ class WorkflowHelperTests(unittest.TestCase):
             combined = prompt_translation_guidance("Keep tone concise.")
 
         self.assertEqual(combined, "Keep tone concise.")
+
+    def test_choose_target_locales_blank_cancels(self):
+        with patch("builtins.input", lambda prompt: ""):
+            selected = choose_target_locales(
+                {"de-DE": "German", "fr-FR": "French"},
+                "en-US",
+                preferred_locales={"de-DE"},
+            )
+
+        self.assertEqual(selected, [])
+
+    def test_choose_target_locales_invalid_cancels(self):
+        with patch("builtins.input", lambda prompt: "de-DE,invalid"):
+            selected = choose_target_locales(
+                {"de-DE": "German", "fr-FR": "French"},
+                "en-US",
+            )
+
+        self.assertEqual(selected, [])
+
+    def test_choose_target_locales_all_is_explicit(self):
+        with patch("builtins.input", lambda prompt: "all"):
+            selected = choose_target_locales(
+                {"de-DE": "German", "fr-FR": "French"},
+                "en-US",
+            )
+
+        self.assertEqual(selected, ["de-DE", "fr-FR"])
+
+    def test_confirm_locale_write_requires_yes(self):
+        with patch("builtins.input", lambda prompt: "n"):
+            self.assertFalse(confirm_locale_write("Translation", ["de-DE"]))
+
+        with patch("builtins.input", lambda prompt: "yes"):
+            self.assertTrue(confirm_locale_write("Translation", ["de-DE"]))
 
 
 if __name__ == "__main__":

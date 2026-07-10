@@ -20,7 +20,13 @@ from utils import (
     print_warning,
     provider_model_info,
 )
-from workflows.helpers import choose_target_locales, get_app_locales, pick_provider, prompt_translation_guidance
+from workflows.helpers import (
+    choose_target_locales,
+    confirm_locale_write,
+    get_app_locales,
+    pick_provider,
+    prompt_translation_guidance,
+)
 
 
 RESOURCE_TITLES = {
@@ -478,13 +484,12 @@ def run(cli) -> bool:
         return True
 
     target_locales = choose_target_locales(available_targets, base_locale, preferred_locales=app_locales)
-    if not target_locales and available_targets:
-        target_locales = list(available_targets.keys())
-        print_info("No target locale selected. Using all missing locales.")
     target_locales = [locale for locale in target_locales if locale != base_locale]
     if not target_locales:
         print_warning("No target locales selected")
         input("\nPress Enter to continue...")
+        return True
+    if not confirm_locale_write("Game Center translation", target_locales):
         return True
 
     total_saved = 0

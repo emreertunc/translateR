@@ -24,7 +24,7 @@ from workflows.iap_translate import run as iap_translate_run
 from workflows.subscription_translate import run as subscription_translate_run
 from workflows.game_center_localizations import run as game_center_localizations_run
 from workflows.app_events_translate import run as app_events_translate_run
-from workflows.helpers import display_locale_table, prompt_translation_guidance
+from workflows.helpers import confirm_locale_write, display_locale_table, prompt_translation_guidance
 from utils import (
     APP_STORE_LOCALES, FIELD_LIMITS, 
     detect_base_language, truncate_keywords, get_field_limit,
@@ -859,6 +859,10 @@ class TranslateRCLI:
                 print_error(f"Provider not found: {selected_provider}")
                 return True
             translation_refinement = self._prompt_translation_refinement(provider)
+
+            action = "Complete metadata and app info translation" if include_app_info else "Metadata translation"
+            if not confirm_locale_write(action, target_locales):
+                return True
             
             # Start translation process
             print()
@@ -1999,6 +2003,9 @@ class TranslateRCLI:
                 print_error(f"Provider not found: {selected_provider}")
                 return True
             translation_refinement = self._prompt_translation_refinement(provider)
+
+            if not confirm_locale_write("App name and subtitle translation", target_locales):
+                return True
             
             print()
             print_info(f"Starting app name & subtitle translation for {len(target_locales)} languages...")

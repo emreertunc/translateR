@@ -16,7 +16,13 @@ from utils import (
     print_warning,
     provider_model_info,
 )
-from workflows.helpers import choose_target_locales, get_app_locales, pick_provider, prompt_translation_guidance
+from workflows.helpers import (
+    choose_target_locales,
+    confirm_locale_write,
+    get_app_locales,
+    pick_provider,
+    prompt_translation_guidance,
+)
 
 
 def _select_events(asc_client, app_id: str) -> List[Dict]:
@@ -189,12 +195,11 @@ def run(cli) -> bool:
             base_locale,
             preferred_locales=app_locales,
         )
-        if not target_locales and available_targets:
-            target_locales = list(available_targets.keys())
-            print_info("No locales selected. Using all missing locales.")
         target_locales = [locale for locale in target_locales if locale != base_locale]
         if not target_locales:
             print_warning("No target locales selected; skipping")
+            continue
+        if not confirm_locale_write(f"In-app event translation for {label}", target_locales):
             continue
 
         def _translate(locale: str) -> Dict[str, str]:

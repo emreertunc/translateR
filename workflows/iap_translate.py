@@ -19,7 +19,13 @@ from utils import (
     print_warning,
     provider_model_info,
 )
-from workflows.helpers import choose_target_locales, get_app_locales, pick_provider, prompt_translation_guidance
+from workflows.helpers import (
+    choose_target_locales,
+    confirm_locale_write,
+    get_app_locales,
+    pick_provider,
+    prompt_translation_guidance,
+)
 
 
 def _select_iaps(ui, asc_client, app_id: str) -> List[Dict]:
@@ -144,11 +150,10 @@ def run(cli) -> bool:
             base_locale,
             preferred_locales=app_locales,
         )
-        if not target_locales and available_targets:
-            target_locales = list(available_targets.keys())
-            print_info("No locales selected. Using all missing locales.")
         if not target_locales:
             print_warning("No target languages selected; skipping this IAP")
+            continue
+        if not confirm_locale_write(f"IAP translation for {iap_label}", target_locales):
             continue
 
         name_limit = get_field_limit("iap_name") or 30

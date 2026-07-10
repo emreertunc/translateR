@@ -97,23 +97,43 @@ def choose_target_locales(
     preferred_locales: Optional[Iterable[str]] = None,
 ) -> List[str]:
     """Select target locales from available list."""
-    preferred_set = set(preferred_locales or [])
+    _ = preferred_locales
     if not available_targets:
         return []
 
     print("Available target locales:")
     display_locale_table(available_targets)
 
-    default_locales = sorted(loc for loc in preferred_set if loc in available_targets)
-    raw = input("Enter target locales (comma-separated, 'all' for every locale): ").strip()
+    raw = input("Enter target locales (comma-separated, 'all' for every locale, blank to cancel): ").strip()
 
     if not raw:
-        return default_locales
+        return []
     if raw.lower() in ("all", "*"):
         return [loc for loc in available_targets.keys() if loc != base_locale]
 
-    selected = [part.strip() for part in raw.split(",") if part.strip() in available_targets]
-    return selected if selected else default_locales
+    requested = [part.strip() for part in raw.split(",") if part.strip()]
+    invalid = [locale for locale in requested if locale not in available_targets]
+    if invalid:
+        print_error(f"Invalid target locales: {', '.join(invalid)}")
+        return []
+
+    return [locale for locale in requested if locale != base_locale]
+
+
+def confirm_locale_write(action: str, target_locales: Iterable[str]) -> bool:
+    """Require explicit confirmation before writing locale changes."""
+    locales = list(target_locales)
+    if not locales:
+        return False
+
+    print()
+    print_info(f"{action} summary:")
+    print(f"  • Target locales: {len(locales)} ({', '.join(locales)})")
+    raw = input("Proceed with App Store Connect changes? (y/n): ").strip().lower()
+    if raw not in ("y", "yes"):
+        print_info("Changes cancelled")
+        return False
+    return True
 
 
 def get_app_locales(asc_client, app_id: str) -> set:
