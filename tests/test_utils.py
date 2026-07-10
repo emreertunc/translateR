@@ -1,6 +1,6 @@
 import unittest
 
-from utils import detect_base_language
+from utils import detect_base_language, get_field_limit
 
 
 class BaseLanguageDetectionTests(unittest.TestCase):
@@ -28,6 +28,12 @@ class BaseLanguageDetectionTests(unittest.TestCase):
             detect_base_language(self.localizations, primary_locale="fr-FR"),
             "en-US",
         )
+
+
+class FieldLimitTests(unittest.TestCase):
+    def test_update_field_names_preserve_underscore_limits(self):
+        self.assertEqual(get_field_limit("promotional_text"), 170)
+        self.assertEqual(get_field_limit("whats_new"), 4000)
 
 
 if __name__ == "__main__":

@@ -1325,7 +1325,7 @@ class TranslateRCLI:
                                 print(f"  • Translating {field_name.lower()}...")
 
                                 is_keywords = field == "keywords"
-                                max_length = get_field_limit(field.replace("_", ""))
+                                max_length = get_field_limit(field)
 
                                 translated_content = provider.translate(
                                     source_content,
