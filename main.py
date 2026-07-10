@@ -920,7 +920,9 @@ class TranslateRCLI:
                             locale=target_locale,
                             description=translated_data.get("description", ""),
                             keywords=translated_data.get("keywords"),
+                            marketing_url=base_data.get("marketingUrl"),
                             promotional_text=translated_data.get("promotional_text"),
+                            support_url=base_data.get("supportUrl"),
                             whats_new=translated_data.get("whats_new")
                         )
 
@@ -944,7 +946,9 @@ class TranslateRCLI:
                                     localization_id=localization_id,
                                     description=translated_data.get("description"),
                                     keywords=translated_data.get("keywords"),
+                                    marketing_url=base_data.get("marketingUrl"),
                                     promotional_text=translated_data.get("promotional_text"),
+                                    support_url=base_data.get("supportUrl"),
                                     whats_new=translated_data.get("whats_new"),
                                 )
                                 print_success(f"  ✅ {language_name} localization updated (existing locale)")
@@ -1027,8 +1031,6 @@ class TranslateRCLI:
             base_name = base_attrs.get("name", "")
             base_subtitle = base_attrs.get("subtitle", "")
             base_privacy_policy_url = base_attrs.get("privacyPolicyUrl", "")
-            base_marketing_url = base_attrs.get("marketingUrl", "")
-            base_support_url = base_attrs.get("supportUrl", "")
             
             if not base_name and not base_subtitle:
                 print_warning("No name or subtitle found in base language. Skipping app name & subtitle.")
@@ -1040,8 +1042,8 @@ class TranslateRCLI:
                 print(f"📱 Name: {base_name}")
             if base_subtitle:
                 print(f"📝 Subtitle: {base_subtitle}")
-            if base_marketing_url or base_support_url or base_privacy_policy_url:
-                print("🔗 App info URLs (marketing/support/privacy policy) will be copied from base locale")
+            if base_privacy_policy_url:
+                print("🔗 Privacy policy URL will be copied from base locale")
             
             success_count = 0
             
@@ -1078,10 +1080,6 @@ class TranslateRCLI:
 
                         if base_privacy_policy_url:
                             translated_data["privacy_policy_url"] = base_privacy_policy_url
-                        if base_marketing_url:
-                            translated_data["marketing_url"] = base_marketing_url
-                        if base_support_url:
-                            translated_data["support_url"] = base_support_url
 
                         locale_entry = find_matching_locale_entry(
                             existing_localizations.get("data", []),
@@ -1720,7 +1718,9 @@ class TranslateRCLI:
                             locale=target_locale,
                             description=translated_data.get("description", ""),
                             keywords=translated_data.get("keywords"),
+                            marketing_url=base_data.get("marketingUrl"),
                             promotional_text=translated_data.get("promotional_text"),
+                            support_url=base_data.get("supportUrl"),
                             whats_new=translated_data.get("whats_new")
                         )
 
@@ -1745,7 +1745,9 @@ class TranslateRCLI:
                                     localization_id=localization_id,
                                     description=translated_data.get("description"),
                                     keywords=translated_data.get("keywords"),
+                                    marketing_url=base_data.get("marketingUrl"),
                                     promotional_text=translated_data.get("promotional_text"),
+                                    support_url=base_data.get("supportUrl"),
                                     whats_new=translated_data.get("whats_new"),
                                 )
                                 print_success(f"  ✅ {language_name} localization updated (existing locale)")

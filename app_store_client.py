@@ -173,7 +173,9 @@ class AppStoreConnectClient:
     
     def create_app_store_version_localization(self, version_id: str, locale: str,
                                             description: str, keywords: str = None,
+                                            marketing_url: str = None,
                                             promotional_text: str = None,
+                                            support_url: str = None,
                                             whats_new: str = None) -> Any:
         """
         Create a new localization for an App Store version.
@@ -183,7 +185,9 @@ class AppStoreConnectClient:
             locale: Language locale code (e.g., 'en-US')
             description: App description (max 4000 chars)
             keywords: App keywords (max 100 chars)
+            marketing_url: Marketing URL (max 255 chars)
             promotional_text: Promotional text (max 170 chars)
+            support_url: Support URL (max 255 chars)
             whats_new: What's new text (max 4000 chars)
         """
         data = {
@@ -208,8 +212,14 @@ class AppStoreConnectClient:
         attributes = data["data"]["attributes"]
         if keywords:
             attributes["keywords"] = keywords
+        if marketing_url:
+            limit = get_field_limit("marketing_url") or 255
+            attributes["marketingUrl"] = marketing_url[:limit]
         if promotional_text:
             attributes["promotionalText"] = promotional_text
+        if support_url:
+            limit = get_field_limit("support_url") or 255
+            attributes["supportUrl"] = support_url[:limit]
         if whats_new:
             attributes["whatsNew"] = whats_new
         
@@ -218,7 +228,9 @@ class AppStoreConnectClient:
     def update_app_store_version_localization(self, localization_id: str,
                                             description: str = None,
                                             keywords: str = None,
+                                            marketing_url: str = None,
                                             promotional_text: str = None,
+                                            support_url: str = None,
                                             whats_new: str = None) -> Any:
         """
         Update an existing App Store version localization.
@@ -227,7 +239,9 @@ class AppStoreConnectClient:
             localization_id: Localization ID to update
             description: App description (max 4000 chars)
             keywords: App keywords (max 100 chars)
+            marketing_url: Marketing URL (max 255 chars)
             promotional_text: Promotional text (max 170 chars)
+            support_url: Support URL (max 255 chars)
             whats_new: What's new text (max 4000 chars)
         """
         # First get current localization to check for changes
@@ -243,9 +257,21 @@ class AppStoreConnectClient:
             
             if keywords is not None and keywords != current_attrs.get("keywords"):
                 attributes["keywords"] = keywords
+
+            if marketing_url is not None:
+                limit = get_field_limit("marketing_url") or len(marketing_url)
+                marketing_url = marketing_url[:limit]
+                if marketing_url != current_attrs.get("marketingUrl"):
+                    attributes["marketingUrl"] = marketing_url
             
             if promotional_text is not None and promotional_text != current_attrs.get("promotionalText"):
                 attributes["promotionalText"] = promotional_text
+
+            if support_url is not None:
+                limit = get_field_limit("support_url") or len(support_url)
+                support_url = support_url[:limit]
+                if support_url != current_attrs.get("supportUrl"):
+                    attributes["supportUrl"] = support_url
             
             if whats_new is not None and whats_new != current_attrs.get("whatsNew"):
                 # Ensure what's new doesn't exceed character limit
@@ -281,8 +307,14 @@ class AppStoreConnectClient:
                 attributes["description"] = description
             if keywords is not None:
                 attributes["keywords"] = keywords
+            if marketing_url is not None:
+                limit = get_field_limit("marketing_url") or len(marketing_url)
+                attributes["marketingUrl"] = marketing_url[:limit]
             if promotional_text is not None:
                 attributes["promotionalText"] = promotional_text
+            if support_url is not None:
+                limit = get_field_limit("support_url") or len(support_url)
+                attributes["supportUrl"] = support_url[:limit]
             if whats_new is not None:
                 if len(whats_new) > 4000:
                     whats_new = whats_new[:3997] + "..."
@@ -309,8 +341,6 @@ class AppStoreConnectClient:
         name: str = None,
         subtitle: str = None,
         privacy_policy_url: str = None,
-        marketing_url: str = None,
-        support_url: str = None,
     ) -> Any:
         """
         Create a new app info localization.
@@ -350,12 +380,6 @@ class AppStoreConnectClient:
         if privacy_policy_url:
             limit = get_field_limit("privacy_policy_url") or 255
             attributes["privacyPolicyUrl"] = privacy_policy_url[:limit]
-        if marketing_url:
-            limit = get_field_limit("marketing_url") or 255
-            attributes["marketingUrl"] = marketing_url[:limit]
-        if support_url:
-            limit = get_field_limit("support_url") or 255
-            attributes["supportUrl"] = support_url[:limit]
         
         return self._request("POST", "appInfoLocalizations", data=data)
     
@@ -365,8 +389,6 @@ class AppStoreConnectClient:
         name: str = None,
         subtitle: str = None,
         privacy_policy_url: str = None,
-        marketing_url: str = None,
-        support_url: str = None,
     ) -> Any:
         """
         Update an existing app info localization.
@@ -401,14 +423,6 @@ class AppStoreConnectClient:
         if privacy_policy_url is not None and privacy_policy_url != current_attrs.get("privacyPolicyUrl"):
             limit = get_field_limit("privacy_policy_url") or len(privacy_policy_url)
             attributes["privacyPolicyUrl"] = privacy_policy_url[:limit]
-
-        if marketing_url is not None and marketing_url != current_attrs.get("marketingUrl"):
-            limit = get_field_limit("marketing_url") or len(marketing_url)
-            attributes["marketingUrl"] = marketing_url[:limit]
-
-        if support_url is not None and support_url != current_attrs.get("supportUrl"):
-            limit = get_field_limit("support_url") or len(support_url)
-            attributes["supportUrl"] = support_url[:limit]
         
         if not attributes:
             return current if current is not None else {"data": {"id": localization_id, "attributes": current_attrs}}
@@ -1286,7 +1300,9 @@ class AppStoreConnectClient:
                     localization_id=target_localization_id,
                     description=source_data.get("description"),
                     keywords=source_data.get("keywords"),
+                    marketing_url=source_data.get("marketingUrl"),
                     promotional_text=source_data.get("promotionalText"),
+                    support_url=source_data.get("supportUrl"),
                     whats_new=source_data.get("whatsNew")
                 )
             else:
@@ -1295,7 +1311,9 @@ class AppStoreConnectClient:
                     locale=locale,
                     description=source_data.get("description", ""),
                     keywords=source_data.get("keywords"),
+                    marketing_url=source_data.get("marketingUrl"),
                     promotional_text=source_data.get("promotionalText"),
+                    support_url=source_data.get("supportUrl"),
                     whats_new=source_data.get("whatsNew")
                 )
             

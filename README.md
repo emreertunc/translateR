@@ -156,8 +156,8 @@ Current workflow set:
 
 **Core metadata fields**: Description (4000), Keywords (100), Promotional Text (170), What's New (4000), App Name (30), Subtitle (30)
 
-**App info URLs**: Privacy Policy URL (255), Marketing URL (255), Support URL (255).
-Complete Translation mode copies these URLs from base locale to target locales.
+**Localized URLs**: Privacy Policy URL (app info), Marketing URL and Support URL (version info), up to 255 characters.
+Complete Translation mode copies these URLs from the base locale to target locales.
 
 **IAP fields**: Name (30), Description (45)
 **Subscription fields**: Name (60), Description (200), Group Name (60), Group Custom App Name (30)
