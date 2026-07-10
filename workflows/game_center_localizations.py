@@ -310,6 +310,8 @@ def run(cli) -> bool:
         print_info("Cancelled")
         return True
 
+    primary_locale = asc.get_app_primary_locale(app_id)
+
     try:
         detail_response = asc.get_game_center_detail(app_id)
     except Exception as error:
@@ -453,7 +455,7 @@ def run(cli) -> bool:
     for locale_set in locale_sets[1:]:
         intersection &= locale_set
 
-    suggested_base = detect_base_language(all_localizations)
+    suggested_base = detect_base_language(all_localizations, primary_locale)
     base_choices = sorted(intersection) if intersection else sorted(union_locales)
     if not intersection:
         print_warning("No shared locale exists across all selected items. Items without base locale will be skipped.")

@@ -131,6 +131,11 @@ class AppStoreConnectClient:
     def get_app(self, app_id: str) -> Any:
         """Get a single app by ID."""
         return self._request("GET", f"apps/{app_id}")
+
+    def get_app_primary_locale(self, app_id: str) -> Optional[str]:
+        """Return the primary locale configured for an app."""
+        response = self.get_app(app_id)
+        return response.get("data", {}).get("attributes", {}).get("primaryLocale")
     
     def get_latest_app_store_version(self, app_id: str) -> Optional[str]:
         """Get the latest editable App Store version ID for an app.

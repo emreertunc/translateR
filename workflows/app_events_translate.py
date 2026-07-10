@@ -116,6 +116,7 @@ def run(cli) -> bool:
         print_info("Cancelled")
         return True
 
+    app_primary_locale = asc.get_app_primary_locale(app_id)
     app_locales = get_app_locales(asc, app_id)
     selected_events = _select_events(asc, app_id)
     if not selected_events:
@@ -165,7 +166,7 @@ def run(cli) -> bool:
         if primary_locale and primary_locale in locale_ids:
             base_locale = primary_locale
         else:
-            base_locale = detect_base_language(localizations)
+            base_locale = detect_base_language(localizations, app_primary_locale)
         if not base_locale:
             print_error("Could not detect base locale; skipping")
             continue

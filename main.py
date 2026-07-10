@@ -798,7 +798,8 @@ class TranslateRCLI:
                 return True
             
             # Detect base language
-            base_locale = detect_base_language(localizations)
+            primary_locale = self.asc_client.get_app_primary_locale(app_id)
+            base_locale = detect_base_language(localizations, primary_locale)
             if not base_locale:
                 print_error("Could not detect base language")
                 return True
@@ -1013,7 +1014,8 @@ class TranslateRCLI:
                 localization_map[locale] = loc["id"]
             
             # Get base language data
-            base_locale = detect_base_language(existing_localizations.get("data", []))
+            primary_locale = self.asc_client.get_app_primary_locale(app_id)
+            base_locale = detect_base_language(existing_localizations.get("data", []), primary_locale)
             if not base_locale:
                 print_error("No base language found for app info. Skipping app name & subtitle.")
                 return
@@ -1157,7 +1159,8 @@ class TranslateRCLI:
                 return True
             
             # Detect base language
-            base_locale = detect_base_language(localizations)
+            primary_locale = self.asc_client.get_app_primary_locale(app_id)
+            base_locale = detect_base_language(localizations, primary_locale)
             if not base_locale:
                 print_error("Could not detect base language")
                 return True
@@ -1556,7 +1559,8 @@ class TranslateRCLI:
             existing_locales = {loc["attributes"]["locale"] for loc in localizations}
             
             # Detect base language
-            base_locale = detect_base_language(localizations)
+            primary_locale = self.asc_client.get_app_primary_locale(app_id)
+            base_locale = detect_base_language(localizations, primary_locale)
             if not base_locale:
                 print_error("Could not detect base language")
                 return True
@@ -1925,7 +1929,10 @@ class TranslateRCLI:
                 existing_locales.append(locale)
                 localization_map[locale] = loc["id"]
             
-            base_locale = detect_base_language(existing_localizations.get("data", []))
+            primary_locale = selected_app.get("attributes", {}).get("primaryLocale")
+            if not primary_locale:
+                primary_locale = self.asc_client.get_app_primary_locale(app_id)
+            base_locale = detect_base_language(existing_localizations.get("data", []), primary_locale)
             if not base_locale:
                 print_error("No base language found. Please create at least one app info localization first.")
                 return True
@@ -2167,7 +2174,10 @@ class TranslateRCLI:
                 print_error("No app info localizations found")
                 return True
             
-            base_locale = detect_base_language(localizations)
+            primary_locale = selected_app.get("attributes", {}).get("primaryLocale")
+            if not primary_locale:
+                primary_locale = self.asc_client.get_app_primary_locale(app_id)
+            base_locale = detect_base_language(localizations, primary_locale)
             if not base_locale:
                 print_error("No base language found. Please create at least one app info localization first.")
                 return True

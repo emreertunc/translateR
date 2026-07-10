@@ -129,6 +129,7 @@ def run(cli) -> bool:
         print_info("Cancelled")
         return True
 
+    primary_locale = asc.get_app_primary_locale(app_id)
     groups = _pick_groups(asc, app_id)
     if not groups:
         return True
@@ -174,7 +175,7 @@ def run(cli) -> bool:
             print_warning("No existing localizations; skipping")
             continue
 
-        base_locale = detect_base_language(localizations)
+        base_locale = detect_base_language(localizations, primary_locale)
         if not base_locale:
             print_error("Could not detect base language; skipping")
             continue

@@ -222,13 +222,18 @@ def get_field_limit(field_name: str) -> Optional[int]:
     return FIELD_LIMITS.get(field_name)
 
 
-def detect_base_language(localizations: List[Dict]) -> Optional[str]:
+def detect_base_language(
+    localizations: List[Dict],
+    primary_locale: Optional[str] = None,
+) -> Optional[str]:
     """
     Detect base language from existing localizations.
-    Prefers English variants, then uses first available.
+    Prefers the app's primary locale, then English variants, then the first
+    available locale.
     
     Args:
         localizations: List of localization data from API
+        primary_locale: App Store Connect primary locale, when available
         
     Returns:
         Base language locale code or None
@@ -242,6 +247,11 @@ def detect_base_language(localizations: List[Dict]) -> Optional[str]:
     # Extract locale codes from localizations
     available_locales = [loc.get("attributes", {}).get("locale") for loc in localizations]
     available_locales = [loc for loc in available_locales if loc]
+
+    if primary_locale:
+        for locale in available_locales:
+            if locales_equivalent(locale, primary_locale):
+                return locale
     
     # Try preferred locales first
     for locale in preferred_locales:
