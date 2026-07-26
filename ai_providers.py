@@ -10,6 +10,7 @@ from typing import Optional, Dict, Any, List
 import requests
 import os
 from ai_logger import log_ai_request, log_ai_response, log_character_limit_retry
+from http_client import request_with_retries
 from prompt_builder import build_translation_prompt
 
 
@@ -113,7 +114,9 @@ class AnthropicProvider(AIProvider):
                 ]
             }
             
-            response = requests.post(url, headers=headers, json=data)
+            response = request_with_retries(
+                "POST", url, headers=headers, json=data, max_retries=2, retry_post=True
+            )
             if not response.ok:
                 message = _extract_error_message(response)
                 raise ValueError(f"Anthropic API error ({response.status_code}): {message}")
@@ -139,7 +142,9 @@ class AnthropicProvider(AIProvider):
                 )
                 data["system"] = system_message
                 
-                response = requests.post(url, headers=headers, json=data)
+                response = request_with_retries(
+                    "POST", url, headers=headers, json=data, max_retries=2, retry_post=True
+                )
                 if not response.ok:
                     message = _extract_error_message(response)
                     raise ValueError(f"Anthropic API error ({response.status_code}): {message}")
@@ -264,7 +269,9 @@ class OpenAIProvider(AIProvider):
             
             data = self._build_request_payload(system_message, text)
             
-            response = requests.post(url, headers=headers, json=data)
+            response = request_with_retries(
+                "POST", url, headers=headers, json=data, max_retries=2, retry_post=True
+            )
             response.raise_for_status()
             
             response_data = response.json()
@@ -284,7 +291,9 @@ class OpenAIProvider(AIProvider):
                 )
                 data = self._build_request_payload(system_message, text)
                 
-                response = requests.post(url, headers=headers, json=data)
+                response = request_with_retries(
+                    "POST", url, headers=headers, json=data, max_retries=2, retry_post=True
+                )
                 response.raise_for_status()
                 response_data = response.json()
                 translated_text = self._extract_response_text(response_data)
@@ -327,7 +336,14 @@ class GoogleGeminiProvider(AIProvider):
                 f"https://generativelanguage.googleapis.com/{version}/"
                 f"models/{self.model}:generateContent?key={self.api_key}"
             )
-            response = requests.post(url, headers={"Content-Type": "application/json"}, json=data)
+            response = request_with_retries(
+                "POST",
+                url,
+                headers={"Content-Type": "application/json"},
+                json=data,
+                max_retries=2,
+                retry_post=True,
+            )
             if response.ok:
                 return response.json()
 
@@ -482,7 +498,9 @@ class OpenRouterProvider(AIProvider):
             
             data = self._build_request_payload(system_message, text)
             
-            response = requests.post(url, headers=headers, json=data)
+            response = request_with_retries(
+                "POST", url, headers=headers, json=data, max_retries=2, retry_post=True
+            )
             if not response.ok:
                 message = _extract_error_message(response)
                 raise ValueError(f"OpenRouter API error ({response.status_code}): {message}")
@@ -504,7 +522,9 @@ class OpenRouterProvider(AIProvider):
                 )
                 data = self._build_request_payload(system_message, text)
                 
-                response = requests.post(url, headers=headers, json=data)
+                response = request_with_retries(
+                    "POST", url, headers=headers, json=data, max_retries=2, retry_post=True
+                )
                 if not response.ok:
                     message = _extract_error_message(response)
                     raise ValueError(f"OpenRouter API error ({response.status_code}): {message}")

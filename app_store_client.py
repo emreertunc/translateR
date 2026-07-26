@@ -9,10 +9,10 @@ import jwt
 import time
 import requests
 from typing import Dict, Any, Optional, List
-import random
 import re
 import unicodedata
 
+from http_client import request_with_retries
 from utils import get_field_limit
 
 
@@ -81,48 +81,111 @@ class AppStoreConnectClient:
         }
         return jwt.encode(payload, self.private_key, algorithm="ES256", headers=headers)
     
-    def _request(self, method: str, endpoint: str, 
-                 params: Optional[Dict[str, Any]] = None, 
-                 data: Optional[Dict[str, Any]] = None,
-                 max_retries: int = 3) -> Any:
-        """Make authenticated request to App Store Connect API with retry logic."""
+    def _request(
+        self,
+        method: str,
+        endpoint: str,
+        params: Optional[Dict[str, Any]] = None,
+        data: Optional[Dict[str, Any]] = None,
+        max_retries: int = 3,
+        retry_conflicts: bool = True,
+        _paginate: bool = True,
+    ) -> Any:
+        """Make an authenticated App Store Connect request."""
         headers = {
             "Authorization": f"Bearer {self._generate_token()}",
             "Content-Type": "application/json"
         }
         if endpoint.startswith("http://") or endpoint.startswith("https://"):
             url = endpoint
+        elif endpoint.startswith("/"):
+            url = f"{self.API_ROOT}{endpoint}"
         elif endpoint.startswith("v1/") or endpoint.startswith("v2/"):
             url = f"{self.API_ROOT}/{endpoint}"
         else:
             url = f"{self.BASE_URL}/{endpoint}"
-        
-        for attempt in range(max_retries + 1):
+
+        def report_retry(reason: str, delay: float, attempt: int, attempts: int) -> None:
+            print(
+                f"⚠️  App Store Connect request retry: {reason}; "
+                f"waiting {delay:.1f}s (attempt {attempt}/{attempts})..."
+            )
+
+        response = request_with_retries(
+            method,
+            url,
+            headers=headers,
+            params=params,
+            json=data,
+            max_retries=max_retries,
+            retry_conflicts=retry_conflicts,
+            on_retry=report_retry,
+        )
+
+        try:
+            response.raise_for_status()
+        except requests.exceptions.HTTPError as error:
             try:
-                response = requests.request(method, url, headers=headers, params=params, json=data)
-                response.raise_for_status()
-                return response.json()
-            except requests.exceptions.HTTPError as e:
-                if response.status_code == 409 and attempt < max_retries:
-                    # Conflict error - retry with exponential backoff
-                    wait_time = (2 ** attempt) + random.uniform(0, 1)
-                    print(f"⚠️  API conflict detected, retrying in {wait_time:.1f}s (attempt {attempt + 1}/{max_retries + 1})...")
-                    time.sleep(wait_time)
-                    continue
-                else:
-                    try:
-                        error_body = response.json()
-                        errors = error_body.get("errors", [])
-                        if errors:
-                            detail = errors[0].get("detail", "")
-                            title = errors[0].get("title", "")
-                            raise requests.exceptions.HTTPError(
-                                f"{response.status_code} Client Error: {title} - {detail} for url: {response.url}",
-                                response=response
-                            )
-                    except (ValueError, AttributeError):
-                        pass
-                    raise e
+                error_body = response.json()
+                errors = error_body.get("errors", [])
+                if errors:
+                    detail = errors[0].get("detail", "")
+                    title = errors[0].get("title", "")
+                    raise requests.exceptions.HTTPError(
+                        f"{response.status_code} Client Error: {title} - {detail} for url: {response.url}",
+                        response=response,
+                    ) from error
+            except (ValueError, AttributeError):
+                pass
+            raise
+
+        if response.status_code == 204 or not response.content:
+            payload: Any = {}
+        else:
+            payload = response.json()
+
+        if _paginate and method.upper() == "GET":
+            return self._collect_paginated_response(payload, max_retries)
+        return payload
+
+    def _collect_paginated_response(self, payload: Any, max_retries: int) -> Any:
+        """Follow App Store Connect pagination links and merge list data."""
+        if not isinstance(payload, dict) or not isinstance(payload.get("data"), list):
+            return payload
+
+        links = payload.get("links") or {}
+        if not isinstance(links, dict):
+            return payload
+
+        next_url = links.get("next")
+        if not next_url:
+            return payload
+
+        combined = list(payload["data"])
+        merged = dict(payload)
+        seen_urls = set()
+        latest_links = links
+
+        while next_url and next_url not in seen_urls:
+            seen_urls.add(next_url)
+            page = self._request(
+                "GET",
+                next_url,
+                max_retries=max_retries,
+                _paginate=False,
+            )
+            if not isinstance(page, dict) or not isinstance(page.get("data"), list):
+                break
+            combined.extend(page["data"])
+            page_links = page.get("links") or {}
+            if not isinstance(page_links, dict):
+                break
+            latest_links = page_links
+            next_url = latest_links.get("next")
+
+        merged["data"] = combined
+        merged["links"] = latest_links
+        return merged
     
     def get_apps(self) -> Any:
         """Get list of apps."""
@@ -244,83 +307,55 @@ class AppStoreConnectClient:
             support_url: Support URL (max 255 chars)
             whats_new: What's new text (max 4000 chars)
         """
-        # First get current localization to check for changes
+        current = None
+        current_attrs = {}
         try:
             current = self.get_app_store_version_localization(localization_id)
             current_attrs = current.get("data", {}).get("attributes", {})
-            
-            # Build attributes dict with only changed values
-            attributes = {}
-            
-            if description is not None and description != current_attrs.get("description"):
-                attributes["description"] = description
-            
-            if keywords is not None and keywords != current_attrs.get("keywords"):
-                attributes["keywords"] = keywords
+        except Exception:
+            current = None
+            current_attrs = {}
 
-            if marketing_url is not None:
-                limit = get_field_limit("marketing_url") or len(marketing_url)
-                marketing_url = marketing_url[:limit]
-                if marketing_url != current_attrs.get("marketingUrl"):
-                    attributes["marketingUrl"] = marketing_url
-            
-            if promotional_text is not None and promotional_text != current_attrs.get("promotionalText"):
-                attributes["promotionalText"] = promotional_text
+        attributes = {}
 
-            if support_url is not None:
-                limit = get_field_limit("support_url") or len(support_url)
-                support_url = support_url[:limit]
-                if support_url != current_attrs.get("supportUrl"):
-                    attributes["supportUrl"] = support_url
-            
-            if whats_new is not None and whats_new != current_attrs.get("whatsNew"):
-                # Ensure what's new doesn't exceed character limit
-                if len(whats_new) > 4000:
-                    whats_new = whats_new[:3997] + "..."
+        if description is not None and description != current_attrs.get("description"):
+            attributes["description"] = description
+
+        if keywords is not None and keywords != current_attrs.get("keywords"):
+            attributes["keywords"] = keywords
+
+        if marketing_url is not None:
+            limit = get_field_limit("marketing_url") or len(marketing_url)
+            marketing_url = marketing_url[:limit]
+            if marketing_url != current_attrs.get("marketingUrl"):
+                attributes["marketingUrl"] = marketing_url
+
+        if promotional_text is not None and promotional_text != current_attrs.get("promotionalText"):
+            attributes["promotionalText"] = promotional_text
+
+        if support_url is not None:
+            limit = get_field_limit("support_url") or len(support_url)
+            support_url = support_url[:limit]
+            if support_url != current_attrs.get("supportUrl"):
+                attributes["supportUrl"] = support_url
+
+        if whats_new is not None:
+            if len(whats_new) > 4000:
+                whats_new = whats_new[:3997] + "..."
+            if whats_new != current_attrs.get("whatsNew"):
                 attributes["whatsNew"] = whats_new
-            
-            # Only make request if there are changes
-            if attributes:
-                data = {
-                    "data": {
-                        "type": "appStoreVersionLocalizations",
-                        "id": localization_id,
-                        "attributes": attributes
-                    }
-                }
-                return self._request("PATCH", f"appStoreVersionLocalizations/{localization_id}", data=data)
-            else:
-                return current  # No changes needed
-                
-        except Exception as e:
-            # Fallback to simpler update if getting current localization fails
-            data = {
-                "data": {
-                    "type": "appStoreVersionLocalizations",
-                    "id": localization_id,
-                    "attributes": {}
-                }
+
+        if not attributes:
+            return current if current is not None else {"data": {"id": localization_id, "attributes": {}}}
+
+        data = {
+            "data": {
+                "type": "appStoreVersionLocalizations",
+                "id": localization_id,
+                "attributes": attributes,
             }
-            
-            attributes = data["data"]["attributes"]
-            if description is not None:
-                attributes["description"] = description
-            if keywords is not None:
-                attributes["keywords"] = keywords
-            if marketing_url is not None:
-                limit = get_field_limit("marketing_url") or len(marketing_url)
-                attributes["marketingUrl"] = marketing_url[:limit]
-            if promotional_text is not None:
-                attributes["promotionalText"] = promotional_text
-            if support_url is not None:
-                limit = get_field_limit("support_url") or len(support_url)
-                attributes["supportUrl"] = support_url[:limit]
-            if whats_new is not None:
-                if len(whats_new) > 4000:
-                    whats_new = whats_new[:3997] + "..."
-                attributes["whatsNew"] = whats_new
-            
-            return self._request("PATCH", f"appStoreVersionLocalizations/{localization_id}", data=data)
+        }
+        return self._request("PATCH", f"appStoreVersionLocalizations/{localization_id}", data=data)
     
     def get_app_infos(self, app_id: str) -> Any:
         """Get app infos for an app."""
@@ -551,7 +586,7 @@ class AppStoreConnectClient:
             data["data"]["attributes"]["description"] = safe_description
 
         try:
-            return self._request("POST", "inAppPurchaseLocalizations", data=data)
+            return self._request("POST", "inAppPurchaseLocalizations", data=data, retry_conflicts=False)
         except requests.exceptions.HTTPError as error:
             status_code = getattr(error.response, "status_code", None)
             if status_code == 409:
@@ -653,7 +688,7 @@ class AppStoreConnectClient:
             data["data"]["attributes"]["description"] = safe_description
 
         try:
-            return self._request("POST", "subscriptionLocalizations", data=data, max_retries=0)
+            return self._request("POST", "subscriptionLocalizations", data=data, retry_conflicts=False)
         except requests.exceptions.HTTPError as error:
             status_code = getattr(error.response, "status_code", None)
             if status_code == 409:
@@ -700,7 +735,7 @@ class AppStoreConnectClient:
                 "attributes": attrs,
             }
         }
-        return self._request("PATCH", f"subscriptionLocalizations/{localization_id}", data=data, max_retries=0)
+        return self._request("PATCH", f"subscriptionLocalizations/{localization_id}", data=data, retry_conflicts=False)
 
     def get_subscription_group_localizations(self, group_id: str) -> Any:
         """Get localizations for a subscription group."""
@@ -740,7 +775,7 @@ class AppStoreConnectClient:
             data["data"]["attributes"]["customAppName"] = safe_custom
 
         try:
-            return self._request("POST", "subscriptionGroupLocalizations", data=data, max_retries=0)
+            return self._request("POST", "subscriptionGroupLocalizations", data=data, retry_conflicts=False)
         except requests.exceptions.HTTPError as error:
             status_code = getattr(error.response, "status_code", None)
             if status_code == 409:
@@ -787,7 +822,7 @@ class AppStoreConnectClient:
                 "attributes": attrs,
             }
         }
-        return self._request("PATCH", f"subscriptionGroupLocalizations/{localization_id}", data=data, max_retries=0)
+        return self._request("PATCH", f"subscriptionGroupLocalizations/{localization_id}", data=data, retry_conflicts=False)
 
     # ----------------------
     # In-App Events helpers
@@ -850,7 +885,7 @@ class AppStoreConnectClient:
         }
 
         try:
-            return self._request("POST", "appEventLocalizations", data=data, max_retries=0)
+            return self._request("POST", "appEventLocalizations", data=data, retry_conflicts=False)
         except requests.exceptions.HTTPError as error:
             status_code = getattr(error.response, "status_code", None)
             if status_code == 409:
@@ -908,7 +943,7 @@ class AppStoreConnectClient:
                 "attributes": attrs,
             }
         }
-        return self._request("PATCH", f"appEventLocalizations/{localization_id}", data=data, max_retries=0)
+        return self._request("PATCH", f"appEventLocalizations/{localization_id}", data=data, retry_conflicts=False)
 
     # ----------------------
     # Game Center helpers
@@ -1024,7 +1059,7 @@ class AppStoreConnectClient:
                 },
             }
         }
-        return self._request("POST", "v1/gameCenterAchievementLocalizations", data=data, max_retries=0)
+        return self._request("POST", "v1/gameCenterAchievementLocalizations", data=data, retry_conflicts=False)
 
     def update_game_center_achievement_localization(
         self,
@@ -1055,7 +1090,7 @@ class AppStoreConnectClient:
                 "attributes": attrs,
             }
         }
-        return self._request("PATCH", f"v1/gameCenterAchievementLocalizations/{localization_id}", data=data, max_retries=0)
+        return self._request("PATCH", f"v1/gameCenterAchievementLocalizations/{localization_id}", data=data, retry_conflicts=False)
 
     def create_game_center_leaderboard_localization(
         self,
@@ -1098,7 +1133,7 @@ class AppStoreConnectClient:
                 },
             }
         }
-        return self._request("POST", "v1/gameCenterLeaderboardLocalizations", data=data, max_retries=0)
+        return self._request("POST", "v1/gameCenterLeaderboardLocalizations", data=data, retry_conflicts=False)
 
     def update_game_center_leaderboard_localization(
         self,
@@ -1134,7 +1169,7 @@ class AppStoreConnectClient:
                 "attributes": attrs,
             }
         }
-        return self._request("PATCH", f"v1/gameCenterLeaderboardLocalizations/{localization_id}", data=data, max_retries=0)
+        return self._request("PATCH", f"v1/gameCenterLeaderboardLocalizations/{localization_id}", data=data, retry_conflicts=False)
 
     def create_game_center_activity_localization(
         self,
@@ -1168,7 +1203,7 @@ class AppStoreConnectClient:
                 },
             }
         }
-        return self._request("POST", "v1/gameCenterActivityLocalizations", data=data, max_retries=0)
+        return self._request("POST", "v1/gameCenterActivityLocalizations", data=data, retry_conflicts=False)
 
     def update_game_center_activity_localization(
         self,
@@ -1195,7 +1230,7 @@ class AppStoreConnectClient:
                 "attributes": attrs,
             }
         }
-        return self._request("PATCH", f"v1/gameCenterActivityLocalizations/{localization_id}", data=data, max_retries=0)
+        return self._request("PATCH", f"v1/gameCenterActivityLocalizations/{localization_id}", data=data, retry_conflicts=False)
 
     def create_game_center_challenge_localization(
         self,
@@ -1229,7 +1264,7 @@ class AppStoreConnectClient:
                 },
             }
         }
-        return self._request("POST", "v1/gameCenterChallengeLocalizations", data=data, max_retries=0)
+        return self._request("POST", "v1/gameCenterChallengeLocalizations", data=data, retry_conflicts=False)
 
     def update_game_center_challenge_localization(
         self,
@@ -1256,7 +1291,7 @@ class AppStoreConnectClient:
                 "attributes": attrs,
             }
         }
-        return self._request("PATCH", f"v1/gameCenterChallengeLocalizations/{localization_id}", data=data, max_retries=0)
+        return self._request("PATCH", f"v1/gameCenterChallengeLocalizations/{localization_id}", data=data, retry_conflicts=False)
     
     def copy_localization_from_previous_version(self, source_version_id: str, 
                                                target_version_id: str, 

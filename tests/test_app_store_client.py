@@ -1,5 +1,7 @@
 import unittest
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
+
+import requests
 
 from app_store_client import AppStoreConnectClient
 
@@ -83,6 +85,53 @@ class AppStoreLocalizationPayloadTests(unittest.TestCase):
         call = self.client.create_app_store_version_localization.call_args
         self.assertEqual(call.kwargs["marketing_url"], "https://example.com/marketing")
         self.assertEqual(call.kwargs["support_url"], "https://example.com/support")
+
+    def test_failed_patch_is_not_sent_twice(self):
+        self.client.get_app_store_version_localization = Mock(
+            return_value={"data": {"attributes": {}}}
+        )
+        self.client._request = Mock(side_effect=requests.exceptions.HTTPError("failed"))
+
+        with self.assertRaises(requests.exceptions.HTTPError):
+            self.client.update_app_store_version_localization(
+                "localization-id",
+                description="Updated description",
+            )
+
+        self.assertEqual(self.client._request.call_count, 1)
+
+
+class AppStorePaginationTests(unittest.TestCase):
+    def setUp(self):
+        self.client = AppStoreConnectClient("key", "issuer", "private-key")
+        self.client._generate_token = Mock(return_value="token")
+
+    @staticmethod
+    def make_response(payload):
+        response = Mock(spec=requests.Response)
+        response.status_code = 200
+        response.content = b"{}"
+        response.json.return_value = payload
+        response.raise_for_status.return_value = None
+        return response
+
+    @patch("app_store_client.request_with_retries")
+    def test_get_requests_follow_and_merge_next_links(self, request_mock):
+        request_mock.side_effect = [
+            self.make_response({
+                "data": [{"id": "1"}],
+                "links": {"next": "https://api.appstoreconnect.apple.com/v1/apps?cursor=next"},
+            }),
+            self.make_response({
+                "data": [{"id": "2"}],
+                "links": {"next": None},
+            }),
+        ]
+
+        result = self.client._request("GET", "apps")
+
+        self.assertEqual([item["id"] for item in result["data"]], ["1", "2"])
+        self.assertEqual(request_mock.call_count, 2)
 
 
 if __name__ == "__main__":
