@@ -117,12 +117,12 @@ Current workflow set:
 - Useful when brand naming should stay identical across locales
 
 ### 7. 📄 Export Localizations
-**Use when**: Backing up or auditing existing localizations
+**Use when**: Auditing core localization text for an App Store version
 
-- Export all existing localizations to timestamped file
+- Exports version description, keywords, promotional text, what's new, app name, and subtitle
 - Choose latest version or specific version
-- Complete backup with all metadata fields
-- Creates organized JSON export with app details
+- Creates a timestamped, human-readable `.txt` file with app and version details
+- This is not a complete or restorable backup; it excludes screenshots and IAP, subscription, event, and Game Center resources
 
 ### 8. 🛒 IAP Translations
 **Use when**: Localizing in-app purchase metadata

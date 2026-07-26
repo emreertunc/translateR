@@ -398,7 +398,7 @@ def print_info(message: str):
 
 def export_existing_localizations(localizations_data: List[Dict[str, Any]], app_name: str = "Unknown App", app_id: str = "unknown", version_string: str = "unknown") -> str:
     """
-    Export existing localizations to a timestamped file.
+    Export core localization text to a timestamped, human-readable file.
     
     Args:
         localizations_data: List of localization data from App Store Connect API

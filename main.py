@@ -2264,8 +2264,8 @@ class TranslateRCLI:
         return True
     
     def export_localizations_mode(self):
-        """Handle export existing localizations workflow."""
-        print_info("Export Localizations Mode - Export all existing localizations to file")
+        """Handle core localization text export workflow."""
+        print_info("Export Localizations Mode - Export core localization text to file")
         print()
         
         try:
