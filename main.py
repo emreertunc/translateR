@@ -16,7 +16,7 @@ import time
 import subprocess
 from typing import Optional, Dict, Any, List
 
-from config import ConfigManager
+from config import ConfigManager, GOOGLE_GEMINI_DEFAULT_MODEL
 from app_store_client import AppStoreConnectClient
 from ai_providers import AIProviderManager, AnthropicProvider, OpenAIProvider, GoogleGeminiProvider, OpenRouterProvider
 from ui import MainMenuRequested, QuitRequested, UI, global_navigation_input
@@ -74,7 +74,10 @@ class TranslateRCLI:
             # Setup Google Gemini
             google_key = self.config.get_ai_provider_key("google")
             if google_key:
-                default_model = providers_config.get("google", {}).get("default_model", "gemini-3.5-flash")
+                default_model = providers_config.get("google", {}).get(
+                    "default_model",
+                    GOOGLE_GEMINI_DEFAULT_MODEL,
+                )
                 google = apply_prompt_defaults(GoogleGeminiProvider(google_key, default_model))
                 self.ai_manager.add_provider("google", google)
             

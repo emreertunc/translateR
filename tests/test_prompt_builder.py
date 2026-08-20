@@ -50,5 +50,74 @@ class ConfigManagerInstructionTests(unittest.TestCase):
             self.assertTrue((Path(tmp) / "instructions.md").exists())
             self.assertIn("App Store Metadata", manager.load_instructions())
 
+    def test_uses_selected_google_models_and_default(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            manager = ConfigManager(tmp)
+
+            self.assertEqual(
+                manager.list_provider_models("google"),
+                [
+                    "gemini-3.7-flash",
+                    "gemini-3.5-flash-lite",
+                    "gemini-3.1-pro-preview",
+                ],
+            )
+            self.assertEqual(manager.get_default_model("google"), "gemini-3.7-flash")
+
+    def test_migrates_removed_google_model_without_changing_other_settings(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            manager = ConfigManager(tmp)
+            providers = manager.load_providers()
+            providers["google"]["models"] = ["gemini-3-flash-preview"]
+            providers["google"]["default_model"] = "gemini-3-flash-preview"
+            providers["custom_setting"] = {"preserve": True}
+            manager.save_providers(providers)
+
+            migrated = ConfigManager(tmp).load_providers()
+
+            self.assertEqual(
+                migrated["google"]["models"],
+                [
+                    "gemini-3.7-flash",
+                    "gemini-3.5-flash-lite",
+                    "gemini-3.1-pro-preview",
+                ],
+            )
+            self.assertEqual(migrated["google"]["default_model"], "gemini-3.7-flash")
+            self.assertEqual(migrated["custom_setting"], {"preserve": True})
+
+    def test_migration_preserves_supported_google_model_choice(self):
+        for selected_model in ("gemini-3.5-flash-lite", "gemini-3.1-pro-preview"):
+            with self.subTest(selected_model=selected_model):
+                with tempfile.TemporaryDirectory() as tmp:
+                    manager = ConfigManager(tmp)
+                    providers = manager.load_providers()
+                    providers["google"]["models"] = [selected_model]
+                    providers["google"]["default_model"] = selected_model
+                    manager.save_providers(providers)
+
+                    migrated = ConfigManager(tmp).load_providers()
+
+                    self.assertEqual(migrated["google"]["default_model"], selected_model)
+
+    def test_migration_does_not_overwrite_malformed_provider_config(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            providers_file = Path(tmp) / "providers.json"
+            malformed_config = "{not-json"
+            providers_file.write_text(malformed_config)
+
+            ConfigManager(tmp)
+
+            self.assertEqual(providers_file.read_text(), malformed_config)
+
+    def test_migration_ignores_non_object_provider_config(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            providers_file = Path(tmp) / "providers.json"
+            providers_file.write_text("[]")
+
+            ConfigManager(tmp)
+
+            self.assertEqual(providers_file.read_text(), "[]")
+
 if __name__ == "__main__":
     unittest.main()

@@ -11,6 +11,14 @@ from typing import Dict, Any, Optional, List
 from pathlib import Path
 
 
+GOOGLE_GEMINI_MODELS = [
+    "gemini-3.7-flash",
+    "gemini-3.5-flash-lite",
+    "gemini-3.1-pro-preview",
+]
+GOOGLE_GEMINI_DEFAULT_MODEL = "gemini-3.7-flash"
+
+
 class ConfigManager:
     """Manages application configuration and API keys."""
     
@@ -44,6 +52,34 @@ class ConfigManager:
         
         if not self.saved_apps_file.exists():
             self._create_default_saved_apps()
+
+        self._migrate_google_provider_models()
+
+    def _migrate_google_provider_models(self) -> None:
+        """Keep the built-in Gemini catalog current without losing valid choices."""
+        try:
+            providers = self.load_providers()
+        except (OSError, json.JSONDecodeError):
+            return
+        if not isinstance(providers, dict):
+            return
+
+        google = providers.get("google")
+        if not isinstance(google, dict):
+            return
+
+        changed = False
+        if google.get("models") != GOOGLE_GEMINI_MODELS:
+            google["models"] = list(GOOGLE_GEMINI_MODELS)
+            changed = True
+
+        if google.get("default_model") not in GOOGLE_GEMINI_MODELS:
+            google["default_model"] = GOOGLE_GEMINI_DEFAULT_MODEL
+            changed = True
+
+        if changed:
+            providers["google"] = google
+            self.save_providers(providers)
     
     def _create_default_providers(self):
         """Create default providers configuration."""
@@ -77,15 +113,8 @@ class ConfigManager:
             "google": {
                 "name": "Google Gemini",
                 "class": "GoogleGeminiProvider",
-                "models": [
-                    "gemini-3.5-flash",
-                    "gemini-3.1-pro-preview",
-                    "gemini-3-flash-preview",
-                    "gemini-3.1-flash-lite",
-                    "gemini-2.5-pro",
-                    "gemini-2.5-flash"
-                ],
-                "default_model": "gemini-3.5-flash"
+                "models": list(GOOGLE_GEMINI_MODELS),
+                "default_model": GOOGLE_GEMINI_DEFAULT_MODEL
             },
             "openrouter": {
                 "name": "OpenRouter",
@@ -227,8 +256,10 @@ CRITICAL: If you cannot stay within character limits while preserving meaning, s
 
     def save_providers(self, providers: Dict[str, Any]) -> None:
         """Persist providers configuration (models, defaults)."""
-        with open(self.providers_file, "w") as f:
+        tmp_path = self.providers_file.with_suffix(self.providers_file.suffix + ".tmp")
+        with open(tmp_path, "w") as f:
             json.dump(providers, f, indent=2)
+        os.replace(tmp_path, self.providers_file)
     
     def load_api_keys(self) -> Dict[str, Any]:
         """Load API keys configuration."""
