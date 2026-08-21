@@ -13,7 +13,7 @@
 
 </div>
 
-Automate App Store Connect localizations with AI translation. Transform your single-language app metadata into 38+ localized versions with just a few commands.
+Automate App Store Connect localizations with AI translation across Apple's 50 supported metadata locales.
 
 ## What It Does
 
@@ -73,12 +73,13 @@ Current workflow set:
 11. 🎉 In-App Events Translations
 
 ### 1. 🌐 Translation Mode
-**Use when**: Adding new languages to your app metadata
+**Use when**: Adding new languages or retranslating existing localizations
 
-- Detects base language and missing target locales
+- Separates new and existing target locales
 - Translates description, keywords, promotional text, and what's new
 - Can include app name and subtitle translation
-- Creates missing localizations in App Store Connect
+- Creates missing localizations and explicitly updates selected existing ones
+- Completes metadata and app info locale by locale, so earlier locales stay complete if a later locale fails
 
 ### 2. 🔄 Update Mode
 **Use when**: Updating existing localizations for new content
@@ -98,7 +99,7 @@ Current workflow set:
 ### 4. 🚀 Full Setup Mode
 **Use when**: Complete localization for new apps
 
-- Translate into ALL 38+ supported languages
+- Translate into all 50 supported App Store metadata locales
 - Maximum global reach
 - One-command setup
 
@@ -164,7 +165,7 @@ Complete Translation mode copies these URLs from the base locale to target local
 **In-App Event fields**: Name (30), Short Description (50), Long Description (120)
 **Game Center text fields**: Name/Description fields up to 30/200 chars by resource type.
 
-**Languages**: All 38 App Store locales including German, French, Spanish, Chinese, Japanese, Korean, Arabic, and more.
+**Languages**: All 50 App Store metadata locales using Apple's canonical API shortcodes.
 
 ## Example Workflow
 
@@ -193,7 +194,7 @@ Base language detected: English (US)
 
 Available target languages:
 1. German  2. French  3. Spanish  4. Chinese (Simplified)
-[... 34 more languages]
+[... more languages]
 
 Select languages (comma-separated or 'all'): 1,2,3
 AI Provider: Claude 4 Sonnet (recommended)

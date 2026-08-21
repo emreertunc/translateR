@@ -88,7 +88,7 @@ class AppStoreConnectClient:
         params: Optional[Dict[str, Any]] = None,
         data: Optional[Dict[str, Any]] = None,
         max_retries: int = 3,
-        retry_conflicts: bool = True,
+        retry_conflicts: bool = False,
         _paginate: bool = True,
     ) -> Any:
         """Make an authenticated App Store Connect request."""

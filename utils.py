@@ -12,10 +12,10 @@ from datetime import datetime
 from typing import Dict, List, Optional, Any, Callable, Tuple
 
 
-# App Store supported locales with their language names
+# Canonical App Store metadata locale shortcodes from Apple's API documentation.
 APP_STORE_LOCALES = {
     "ar-SA": "Arabic",
-    "as": "Assamese",
+    "bn-BD": "Bengali",
     "ca": "Catalan",
     "zh-Hans": "Chinese (Simplified)",
     "zh-Hant": "Chinese (Traditional)",
@@ -32,51 +32,58 @@ APP_STORE_LOCALES = {
     "fr-CA": "French (Canada)",
     "de-DE": "German",
     "el": "Greek",
-    "gu": "Gujarati",
+    "gu-IN": "Gujarati",
     "he": "Hebrew",
     "hi": "Hindi",
     "hu": "Hungarian",
     "id": "Indonesian",
     "it": "Italian",
     "ja": "Japanese",
-    "kn": "Kannada",
+    "kn-IN": "Kannada",
     "ko": "Korean",
-    "ml": "Malayalam",
-    "mr": "Marathi",
     "ms": "Malay",
+    "ml-IN": "Malayalam",
+    "mr-IN": "Marathi",
     "no": "Norwegian",
-    "or": "Odia",
-    "pa": "Punjabi",
+    "or-IN": "Odia",
     "pl": "Polish",
     "pt-BR": "Portuguese (Brazil)",
     "pt-PT": "Portuguese (Portugal)",
+    "pa-IN": "Punjabi",
     "ro": "Romanian",
     "ru": "Russian",
     "sk": "Slovak",
-    "sl": "Slovenian",
+    "sl-SI": "Slovenian",
     "es-MX": "Spanish (Mexico)",
     "es-ES": "Spanish (Spain)",
     "sv": "Swedish",
-    "ta": "Tamil",
-    "te": "Telugu",
+    "ta-IN": "Tamil",
+    "te-IN": "Telugu",
     "th": "Thai",
     "tr": "Turkish",
     "uk": "Ukrainian",
-    "ur": "Urdu",
+    "ur-PK": "Urdu",
     "vi": "Vietnamese",
-    "bn-BD": "Bengali (Bangladesh)",
-    "bn-IN": "Bengali (India)",
-    "gu-IN": "Gujarati (India)",
-    "hi-IN": "Hindi (India)",
-    "kn-IN": "Kannada (India)",
-    "ml-IN": "Malayalam (India)",
-    "mr-IN": "Marathi (India)",
-    "or-IN": "Odia (India)",
-    "pa-IN": "Punjabi (India)",
-    "ta-IN": "Tamil (India)",
-    "te-IN": "Telugu (India)",
-    "ur-PK": "Urdu (Pakistan)",
-    "sl-SI": "Slovenian (Slovenia)",
+}
+
+_APP_STORE_LOCALE_ALIASES = {
+    # Compatibility with locale codes previously shown by TranslateR.
+    "bn-in": "bn-BD",
+    "gu": "gu-IN",
+    "hi-in": "hi",
+    "kn": "kn-IN",
+    "ml": "ml-IN",
+    "mr": "mr-IN",
+    "or": "or-IN",
+    "pa": "pa-IN",
+    "sl": "sl-SI",
+    "ta": "ta-IN",
+    "te": "te-IN",
+    "ur": "ur-PK",
+}
+
+_CANONICAL_APP_STORE_LOCALES = {
+    locale.casefold(): locale for locale in APP_STORE_LOCALES
 }
 
 # Character limits for App Store fields
@@ -110,11 +117,29 @@ FIELD_LIMITS = {
     "game_center_challenge_description": 200
 }
 
+def canonicalize_app_store_locale(locale: Optional[str]) -> Optional[str]:
+    """Return Apple's canonical metadata locale shortcode, if supported."""
+    if not locale or not isinstance(locale, str):
+        return None
+
+    normalized = locale.strip().replace("_", "-").casefold()
+    if not normalized:
+        return None
+
+    canonical = _CANONICAL_APP_STORE_LOCALES.get(normalized)
+    if canonical:
+        return canonical
+    return _APP_STORE_LOCALE_ALIASES.get(normalized)
+
+
 def normalize_locale_code(locale: Optional[str]) -> str:
     """Normalize locale codes for comparison."""
     if not locale:
         return ""
-    return locale.replace("_", "-")
+    canonical = canonicalize_app_store_locale(locale)
+    if canonical:
+        return canonical
+    return str(locale).strip().replace("_", "-")
 
 
 def locales_equivalent(locale_a: Optional[str], locale_b: Optional[str]) -> bool:
@@ -122,8 +147,8 @@ def locales_equivalent(locale_a: Optional[str], locale_b: Optional[str]) -> bool
     if not locale_a or not locale_b:
         return False
 
-    norm_a = normalize_locale_code(locale_a)
-    norm_b = normalize_locale_code(locale_b)
+    norm_a = normalize_locale_code(locale_a).casefold()
+    norm_b = normalize_locale_code(locale_b).casefold()
 
     if norm_a == norm_b:
         return True

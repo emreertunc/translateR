@@ -133,6 +133,37 @@ class AppStorePaginationTests(unittest.TestCase):
         self.assertEqual([item["id"] for item in result["data"]], ["1", "2"])
         self.assertEqual(request_mock.call_count, 2)
 
+    @patch("http_client.time.sleep")
+    @patch("http_client.requests.request")
+    def test_invalid_409_is_not_retried_and_preserves_error_detail(
+        self,
+        request_mock,
+        sleep_mock,
+    ):
+        response = requests.Response()
+        response.status_code = 409
+        response.url = "https://api.appstoreconnect.apple.com/v1/appInfoLocalizations"
+        response.headers["Content-Type"] = "application/json"
+        response._content = (
+            b'{"errors":[{"title":"The provided entity includes an attribute '
+            b'with an invalid value","detail":"hi-IN is not a valid locale."}]}'
+        )
+        request_mock.return_value = response
+
+        with self.assertRaisesRegex(
+            requests.exceptions.HTTPError,
+            "invalid value - hi-IN is not a valid locale",
+        ):
+            self.client._request(
+                "POST",
+                "appInfoLocalizations",
+                data={"data": {}},
+                max_retries=3,
+            )
+
+        self.assertEqual(request_mock.call_count, 1)
+        sleep_mock.assert_not_called()
+
 
 if __name__ == "__main__":
     unittest.main()
