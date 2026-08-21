@@ -17,6 +17,46 @@ GOOGLE_GEMINI_MODELS = [
     "gemini-3.1-pro-preview",
 ]
 GOOGLE_GEMINI_DEFAULT_MODEL = "gemini-3.7-flash"
+GOOGLE_GEMINI_MODEL_REPLACEMENTS = {
+    "gemini-3.5-flash": "gemini-3.7-flash",
+    "gemini-3-flash-preview": "gemini-3.7-flash",
+    "gemini-3.1-flash-lite": "gemini-3.5-flash-lite",
+    "gemini-2.5-pro": "gemini-3.1-pro-preview",
+    "gemini-2.5-flash": "gemini-3.7-flash",
+}
+
+OPENAI_MODELS = [
+    "gpt-5.6-sol",
+    "gpt-5.6-terra",
+    "gpt-5.6-luna",
+]
+OPENAI_DEFAULT_MODEL = "gpt-5.6-sol"
+OPENAI_MODEL_REPLACEMENTS = {
+    "gpt-5.5": "gpt-5.6-sol",
+    "gpt-5.4": "gpt-5.6-sol",
+    "gpt-5.2": "gpt-5.6-sol",
+    "gpt-5-mini": "gpt-5.6-terra",
+    "gpt-5-mini-2025-08-07": "gpt-5.6-terra",
+    "gpt-5.4-mini": "gpt-5.6-terra",
+    "gpt-5.4-mini-2026-03-17": "gpt-5.6-terra",
+    "gpt-5-nano": "gpt-5.6-luna",
+    "gpt-5-nano-2025-08-07": "gpt-5.6-luna",
+    "gpt-5.4-nano": "gpt-5.6-luna",
+    "gpt-5.4-nano-2026-03-17": "gpt-5.6-luna",
+}
+
+PROVIDER_MODEL_CATALOGS = {
+    "google": {
+        "models": GOOGLE_GEMINI_MODELS,
+        "default_model": GOOGLE_GEMINI_DEFAULT_MODEL,
+        "replacements": GOOGLE_GEMINI_MODEL_REPLACEMENTS,
+    },
+    "openai": {
+        "models": OPENAI_MODELS,
+        "default_model": OPENAI_DEFAULT_MODEL,
+        "replacements": OPENAI_MODEL_REPLACEMENTS,
+    },
+}
 
 
 class ConfigManager:
@@ -53,10 +93,10 @@ class ConfigManager:
         if not self.saved_apps_file.exists():
             self._create_default_saved_apps()
 
-        self._migrate_google_provider_models()
+        self._migrate_provider_models()
 
-    def _migrate_google_provider_models(self) -> None:
-        """Keep the built-in Gemini catalog current without losing valid choices."""
+    def _migrate_provider_models(self) -> None:
+        """Keep built-in model catalogs current without losing valid choices."""
         try:
             providers = self.load_providers()
         except (OSError, json.JSONDecodeError):
@@ -64,21 +104,51 @@ class ConfigManager:
         if not isinstance(providers, dict):
             return
 
-        google = providers.get("google")
-        if not isinstance(google, dict):
-            return
-
         changed = False
-        if google.get("models") != GOOGLE_GEMINI_MODELS:
-            google["models"] = list(GOOGLE_GEMINI_MODELS)
-            changed = True
+        for provider_name, catalog in PROVIDER_MODEL_CATALOGS.items():
+            provider = providers.get(provider_name)
+            if not isinstance(provider, dict):
+                continue
 
-        if google.get("default_model") not in GOOGLE_GEMINI_MODELS:
-            google["default_model"] = GOOGLE_GEMINI_DEFAULT_MODEL
-            changed = True
+            models = list(catalog["models"])
+            replacements = catalog["replacements"]
+            known_models = set(models) | set(replacements)
+            configured_models = provider.get("models")
+            custom_models = []
+            if isinstance(configured_models, list):
+                for model in configured_models:
+                    if not isinstance(model, str):
+                        continue
+                    normalized_model = model.strip()
+                    if (
+                        normalized_model
+                        and normalized_model not in known_models
+                        and normalized_model not in custom_models
+                    ):
+                        custom_models.append(normalized_model)
+            updated_models = models + custom_models
+
+            selected_model = provider.get("default_model")
+            if isinstance(selected_model, str) and selected_model in replacements:
+                selected_model = replacements[selected_model]
+            elif isinstance(selected_model, str) and selected_model.strip():
+                selected_model = selected_model.strip()
+                if selected_model not in updated_models:
+                    updated_models.append(selected_model)
+            else:
+                selected_model = catalog["default_model"]
+
+            if provider.get("models") != updated_models:
+                provider["models"] = updated_models
+                changed = True
+
+            if provider.get("default_model") != selected_model:
+                provider["default_model"] = selected_model
+                changed = True
+
+            providers[provider_name] = provider
 
         if changed:
-            providers["google"] = google
             self.save_providers(providers)
     
     def _create_default_providers(self):
@@ -102,13 +172,8 @@ class ConfigManager:
             "openai": {
                 "name": "OpenAI GPT",
                 "class": "OpenAIProvider", 
-                "models": [
-                    "gpt-5.5",
-                    "gpt-5.4",
-                    "gpt-5.4-mini",
-                    "gpt-5.4-nano",
-                ],
-                "default_model": "gpt-5.5"
+                "models": list(OPENAI_MODELS),
+                "default_model": OPENAI_DEFAULT_MODEL
             },
             "google": {
                 "name": "Google Gemini",

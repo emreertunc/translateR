@@ -64,6 +64,16 @@ class ConfigManagerInstructionTests(unittest.TestCase):
             )
             self.assertEqual(manager.get_default_model("google"), "gemini-3.7-flash")
 
+    def test_uses_selected_openai_models_and_default(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            manager = ConfigManager(tmp)
+
+            self.assertEqual(
+                manager.list_provider_models("openai"),
+                ["gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna"],
+            )
+            self.assertEqual(manager.get_default_model("openai"), "gpt-5.6-sol")
+
     def test_migrates_removed_google_model_without_changing_other_settings(self):
         with tempfile.TemporaryDirectory() as tmp:
             manager = ConfigManager(tmp)
@@ -99,6 +109,109 @@ class ConfigManagerInstructionTests(unittest.TestCase):
                     migrated = ConfigManager(tmp).load_providers()
 
                     self.assertEqual(migrated["google"]["default_model"], selected_model)
+
+    def test_migrates_openai_models_without_changing_cost_tier(self):
+        replacements = (
+            ("gpt-5.5", "gpt-5.6-sol"),
+            ("gpt-5.4", "gpt-5.6-sol"),
+            ("gpt-5.2", "gpt-5.6-sol"),
+            ("gpt-5.4-mini", "gpt-5.6-terra"),
+            ("gpt-5.4-mini-2026-03-17", "gpt-5.6-terra"),
+            ("gpt-5-mini-2025-08-07", "gpt-5.6-terra"),
+            ("gpt-5.4-nano", "gpt-5.6-luna"),
+            ("gpt-5.4-nano-2026-03-17", "gpt-5.6-luna"),
+            ("gpt-5-nano-2025-08-07", "gpt-5.6-luna"),
+        )
+        for selected_model, expected_model in replacements:
+            with self.subTest(selected_model=selected_model):
+                with tempfile.TemporaryDirectory() as tmp:
+                    manager = ConfigManager(tmp)
+                    providers = manager.load_providers()
+                    providers["openai"]["models"] = [selected_model]
+                    providers["openai"]["default_model"] = selected_model
+                    providers["openai"]["custom_setting"] = "preserve"
+                    manager.save_providers(providers)
+
+                    migrated = ConfigManager(tmp).load_providers()
+
+                    self.assertEqual(
+                        migrated["openai"]["models"],
+                        ["gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna"],
+                    )
+                    self.assertEqual(
+                        migrated["openai"]["default_model"],
+                        expected_model,
+                    )
+                    self.assertEqual(
+                        migrated["openai"]["custom_setting"],
+                        "preserve",
+                    )
+
+    def test_migration_preserves_unknown_custom_model_choices(self):
+        custom_models = {
+            "google": (
+                "gemini-custom-list-model",
+                "gemini-custom-default-model",
+            ),
+            "openai": (
+                "gpt-custom-list-model",
+                "gpt-custom-default-model",
+            ),
+        }
+        for provider_name, (listed_model, selected_model) in custom_models.items():
+            with self.subTest(provider_name=provider_name):
+                with tempfile.TemporaryDirectory() as tmp:
+                    manager = ConfigManager(tmp)
+                    providers = manager.load_providers()
+                    providers[provider_name]["models"] = [
+                        "",
+                        f"  {listed_model}  ",
+                        listed_model,
+                    ]
+                    providers[provider_name]["default_model"] = selected_model
+                    manager.save_providers(providers)
+
+                    migrated = ConfigManager(tmp).load_providers()
+
+                    self.assertIn(listed_model, migrated[provider_name]["models"])
+                    self.assertEqual(
+                        migrated[provider_name]["models"].count(listed_model),
+                        1,
+                    )
+                    self.assertIn(selected_model, migrated[provider_name]["models"])
+                    self.assertEqual(
+                        migrated[provider_name]["default_model"],
+                        selected_model,
+                    )
+                    self.assertEqual(
+                        ConfigManager(tmp).load_providers(),
+                        migrated,
+                    )
+
+    def test_migration_preserves_supported_openai_model_choice(self):
+        for selected_model in ("gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna"):
+            with self.subTest(selected_model=selected_model):
+                with tempfile.TemporaryDirectory() as tmp:
+                    manager = ConfigManager(tmp)
+                    providers = manager.load_providers()
+                    providers["openai"]["models"] = [selected_model]
+                    providers["openai"]["default_model"] = selected_model
+                    manager.save_providers(providers)
+
+                    migrated = ConfigManager(tmp).load_providers()
+
+                    self.assertEqual(migrated["openai"]["default_model"], selected_model)
+
+    def test_migration_replaces_non_string_openai_default(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            manager = ConfigManager(tmp)
+            providers = manager.load_providers()
+            providers["openai"]["default_model"] = []
+            manager.save_providers(providers)
+
+            migrated = ConfigManager(tmp).load_providers()
+
+            self.assertEqual(migrated["openai"]["default_model"], "gpt-5.6-sol")
 
     def test_migration_does_not_overwrite_malformed_provider_config(self):
         with tempfile.TemporaryDirectory() as tmp:

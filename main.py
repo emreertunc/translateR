@@ -16,7 +16,7 @@ import time
 import subprocess
 from typing import Optional, Dict, Any, List
 
-from config import ConfigManager, GOOGLE_GEMINI_DEFAULT_MODEL
+from config import ConfigManager, GOOGLE_GEMINI_DEFAULT_MODEL, OPENAI_DEFAULT_MODEL
 from app_store_client import AppStoreConnectClient
 from ai_providers import AIProviderManager, AnthropicProvider, OpenAIProvider, GoogleGeminiProvider, OpenRouterProvider
 from ui import MainMenuRequested, QuitRequested, UI, global_navigation_input
@@ -67,7 +67,10 @@ class TranslateRCLI:
             # Setup OpenAI
             openai_key = self.config.get_ai_provider_key("openai")
             if openai_key:
-                default_model = providers_config.get("openai", {}).get("default_model", "gpt-5.5")
+                default_model = providers_config.get("openai", {}).get(
+                    "default_model",
+                    OPENAI_DEFAULT_MODEL,
+                )
                 openai = apply_prompt_defaults(OpenAIProvider(openai_key, default_model))
                 self.ai_manager.add_provider("openai", openai)
             

@@ -233,7 +233,7 @@ All AI requests and responses are automatically logged for debugging and quality
 ```
 [2025-08-05 10:30:15] REQUEST
 Provider: OpenAI GPT
-Model: gpt-5.5
+Model: gpt-5.6-sol
 Target Language: German
 Max Length: 100
 Original Text (45 chars):

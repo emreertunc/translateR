@@ -14,6 +14,35 @@ from http_client import request_with_retries
 from prompt_builder import build_translation_prompt
 
 
+OPENAI_MAX_OUTPUT_TOKENS = 25_000
+OPENAI_RETRYABLE_STATUS_CODES = frozenset({408, 409, 429, 500, 502, 503, 504})
+
+
+def _extract_payload_error(payload: Any) -> Optional[str]:
+    """Return the most useful error detail from a provider payload."""
+    if not isinstance(payload, dict):
+        return str(payload) if payload else None
+
+    error = payload.get("error")
+    if isinstance(error, dict):
+        for key in ("message", "code", "type"):
+            if error.get(key):
+                detail = str(error[key]).strip()
+                if detail:
+                    return detail
+    elif error:
+        detail = str(error).strip()
+        if detail:
+            return detail
+
+    for key in ("message", "code", "type"):
+        if payload.get(key):
+            detail = str(payload[key]).strip()
+            if detail:
+                return detail
+    return None
+
+
 def _extract_error_message(response: requests.Response) -> str:
     """Return provider error message with API body when available."""
     try:
@@ -21,15 +50,9 @@ def _extract_error_message(response: requests.Response) -> str:
     except ValueError:
         payload = None
 
-    if isinstance(payload, dict):
-        err = payload.get("error")
-        if isinstance(err, dict):
-            message = err.get("message")
-            if isinstance(message, str) and message.strip():
-                return message.strip()
-        message = payload.get("message")
-        if isinstance(message, str) and message.strip():
-            return message.strip()
+    message = _extract_payload_error(payload)
+    if message:
+        return message
 
     text = (response.text or "").strip()
     return text[:400] if text else f"HTTP {response.status_code}"
@@ -190,8 +213,9 @@ class OpenAIProvider(AIProvider):
                         "content": [{"type": "input_text", "text": text}]
                     }
                 ],
-                "max_output_tokens": 1000,
-                "reasoning": {"effort": "medium"}
+                "max_output_tokens": OPENAI_MAX_OUTPUT_TOKENS,
+                "reasoning": {"effort": "medium"},
+                "store": False,
             }
 
         return {
@@ -207,6 +231,19 @@ class OpenAIProvider(AIProvider):
     def _extract_response_text(self, response_data: Dict[str, Any]) -> str:
         """Extract translated text from either Responses or Chat Completions format."""
         if self._uses_responses_api():
+            status = response_data.get("status")
+            if status == "incomplete":
+                details = response_data.get("incomplete_details")
+                reason = details.get("reason") if isinstance(details, dict) else None
+                raise ValueError(
+                    f"OpenAI response incomplete: {reason or 'unknown reason'}"
+                )
+            if status == "failed":
+                message = _extract_payload_error(response_data)
+                raise ValueError(f"OpenAI response failed: {message or 'unknown error'}")
+            if status and status != "completed":
+                raise ValueError(f"OpenAI response not completed: {status}")
+
             output_text = response_data.get("output_text")
             if output_text:
                 return str(output_text)
@@ -270,9 +307,16 @@ class OpenAIProvider(AIProvider):
             data = self._build_request_payload(system_message, text)
             
             response = request_with_retries(
-                "POST", url, headers=headers, json=data, max_retries=2, retry_post=True
+                "POST",
+                url,
+                headers=headers,
+                json=data,
+                max_retries=2,
+                retry_status_codes=OPENAI_RETRYABLE_STATUS_CODES,
             )
-            response.raise_for_status()
+            if not response.ok:
+                message = _extract_error_message(response)
+                raise ValueError(f"OpenAI API error ({response.status_code}): {message}")
             
             response_data = response.json()
             translated_text = self._extract_response_text(response_data)
@@ -292,9 +336,16 @@ class OpenAIProvider(AIProvider):
                 data = self._build_request_payload(system_message, text)
                 
                 response = request_with_retries(
-                    "POST", url, headers=headers, json=data, max_retries=2, retry_post=True
+                    "POST",
+                    url,
+                    headers=headers,
+                    json=data,
+                    max_retries=2,
+                    retry_status_codes=OPENAI_RETRYABLE_STATUS_CODES,
                 )
-                response.raise_for_status()
+                if not response.ok:
+                    message = _extract_error_message(response)
+                    raise ValueError(f"OpenAI API error ({response.status_code}): {message}")
                 response_data = response.json()
                 translated_text = self._extract_response_text(response_data)
             
