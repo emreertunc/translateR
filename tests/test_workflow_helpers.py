@@ -2,6 +2,7 @@ import io
 import unittest
 from unittest.mock import patch
 
+from ui import MainMenuRequested
 from workflows.helpers import (
     choose_target_locales,
     combine_prompt_refinements,
@@ -37,27 +38,51 @@ class WorkflowHelperTests(unittest.TestCase):
         self.assertIn("override the static translation instructions", combined)
 
     def test_prompt_translation_guidance_asks_for_text_when_enabled(self):
-        prompts = []
+        with patch(
+            "builtins.input",
+            side_effect=["y", "Keep AI untranslated.", "EOF"],
+        ) as input_mock:
+            with patch("sys.stdout", io.StringIO()):
+                combined = prompt_translation_guidance("Keep tone concise.")
 
-        def fake_input(prompt):
-            prompts.append(prompt)
-            return "y" if len(prompts) == 1 else "Keep AI untranslated."
-
-        with patch("builtins.input", fake_input):
-            combined = prompt_translation_guidance("Keep tone concise.")
-
-        self.assertEqual(len(prompts), 2)
+        self.assertEqual(input_mock.call_count, 3)
         self.assertIn("Keep AI untranslated.", combined)
         self.assertLess(
             combined.index("Keep AI untranslated."),
             combined.index("Keep tone concise."),
         )
 
+    def test_prompt_translation_guidance_preserves_multiline_paste(self):
+        with patch(
+            "builtins.input",
+            side_effect=[
+                "y",
+                "Pixel Stretch Pro instructions",
+                "",
+                "Keep pixel stretch in English.",
+                "EOF",
+            ],
+        ):
+            with patch("sys.stdout", io.StringIO()):
+                combined = prompt_translation_guidance()
+
+        self.assertIn(
+            "Pixel Stretch Pro instructions\n\nKeep pixel stretch in English.",
+            combined,
+        )
+        self.assertNotIn("EOF", combined)
+
     def test_prompt_translation_guidance_keeps_global_when_disabled(self):
         with patch("builtins.input", lambda prompt: "n"):
             combined = prompt_translation_guidance("Keep tone concise.")
 
         self.assertEqual(combined, "Keep tone concise.")
+
+    def test_prompt_translation_guidance_propagates_main_menu_command(self):
+        with patch("builtins.input", side_effect=["y", ":menu"]):
+            with patch("sys.stdout", io.StringIO()):
+                with self.assertRaises(MainMenuRequested):
+                    prompt_translation_guidance()
 
     def test_choose_target_locales_blank_cancels(self):
         with patch("builtins.input", lambda prompt: ""):

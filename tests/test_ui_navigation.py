@@ -7,6 +7,7 @@ from ui import (
     MainMenuRequested,
     NavigationInput,
     QuitRequested,
+    UI,
     global_navigation_input,
 )
 
@@ -84,6 +85,29 @@ class NavigationInputTests(unittest.TestCase):
             self.assertIs(builtins.input, patched_input)
 
         self.assertIs(builtins.input, original_input)
+
+    def test_multiline_input_preserves_navigation_words_as_text(self):
+        responses = iter(["first line", "exit", "use :q here", "EOF"])
+
+        with patch.object(builtins, "input", lambda prompt="": next(responses)):
+            with global_navigation_input():
+                with patch("sys.stdout", io.StringIO()):
+                    result = UI().prompt_multiline("Paste text")
+
+        self.assertEqual(result, "first line\nexit\nuse :q here")
+
+    def test_multiline_input_uses_explicit_navigation_commands(self):
+        for command, expected_error in (
+            (":menu", MainMenuRequested),
+            (":m", MainMenuRequested),
+            (":q", QuitRequested),
+            (":quit", QuitRequested),
+        ):
+            with self.subTest(command=command):
+                with patch.object(builtins, "input", lambda prompt="": command):
+                    with patch("sys.stdout", io.StringIO()):
+                        with self.assertRaises(expected_error):
+                            UI().prompt_multiline("Paste text")
 
 
 if __name__ == "__main__":

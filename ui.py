@@ -8,6 +8,15 @@ import builtins
 from contextlib import contextmanager
 from typing import Callable, Iterator, List, Optional
 
+try:
+    import readline as _readline
+except ImportError:  # pragma: no cover - unavailable on some platforms
+    pass
+else:
+    # Load-bearing: readline bypasses POSIX MAX_CANON for long pasted lines.
+    # Do not retain API keys or other prompt values in process history.
+    _readline.set_auto_history(False)
+
 
 class MainMenuRequested(BaseException):
     """Raised when the user requests returning to the main menu."""
@@ -84,13 +93,24 @@ class UI:
             print("-" * 40)
             print(initial)
             print("-" * 40)
-        print("Enter text. Finish with a line containing only 'EOF'.")
+        print(
+            "Enter text. Finish with a line containing only 'EOF'. "
+            "Use ':menu' for the main menu or ':q' to quit."
+        )
         lines: List[str] = []
+        reader = builtins.input
+        if isinstance(reader, NavigationInput):
+            reader = reader.raw_input
         while True:
             try:
-                line = input()
+                line = reader()
             except EOFError:
                 break
+            command = _normalize_command(line)
+            if command in (":m", ":menu"):
+                raise MainMenuRequested()
+            if command in (":q", ":quit"):
+                raise QuitRequested()
             if line.strip() == "EOF":
                 break
             lines.append(line)

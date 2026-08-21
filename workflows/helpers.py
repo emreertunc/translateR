@@ -2,6 +2,7 @@
 
 from typing import Dict, Iterable, List, Optional, Tuple
 
+from ui import UI
 from utils import print_error, print_info, print_warning
 
 
@@ -42,7 +43,9 @@ def prompt_translation_guidance(global_guidance: str = "") -> str:
     if raw not in ("y", "yes"):
         return combine_prompt_refinements("", global_guidance)
 
-    user_guidance = input("Enter translation instructions: ").strip()
+    user_guidance = UI().prompt_multiline(
+        "Paste translation instructions below."
+    ) or ""
     if not user_guidance:
         print_warning("No specific instructions entered; using default translation instructions.")
 
